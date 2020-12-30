@@ -28,6 +28,16 @@
 #include "llvm/Support/SystemUtils.h"
 #include "llvm/Support/ToolOutputFile.h"
 #include <memory>
+
+#ifdef __APPLE__
+#include <TargetConditionals.h>
+#if (TARGET_OS_IPHONE || TARGET_IPHONE_SIMULATOR)
+#include "ios_error.h"
+#undef exit
+#define exit(a) { llvm_shutdown(); ios_exit(a); }
+#endif
+#endif
+
 using namespace llvm;
 
 cl::OptionCategory AsCat("llvm-as Options");

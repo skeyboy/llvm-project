@@ -50,6 +50,9 @@
 #include <memory>
 #include <set>
 #include <system_error>
+#ifdef __APPLE__
+#include <TargetConditionals.h>
+#endif
 using namespace clang;
 using namespace clang::driver;
 using namespace llvm::opt;
@@ -342,6 +345,10 @@ static int ExecuteCC1Tool(SmallVectorImpl<const char *> &ArgV) {
 
 int main(int argc_, const char **argv_) {
   noteBottomOfStack();
+#if TARGET_OS_IPHONE
+  // Reset command line option parser (WIP, related to clang f1.c f2.c):
+  llvm::cl::ResetCommandLineParser();
+#endif
   llvm::InitLLVM X(argc_, argv_);
   llvm::setBugReportMsg("PLEASE submit a bug report to " BUG_REPORT_URL
                         " and include the crash backtrace, preprocessed "

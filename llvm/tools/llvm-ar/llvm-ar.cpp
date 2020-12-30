@@ -49,6 +49,16 @@
 #include <io.h>
 #endif
 
+#ifdef __APPLE__
+#include <TargetConditionals.h>
+#if (TARGET_OS_IPHONE || TARGET_IPHONE_SIMULATOR)
+#include "ios_error.h"
+#undef write
+#undef exit
+#define exit(a) { llvm_shutdown(); ios_exit(a); }
+#endif
+#endif
+
 #ifdef _WIN32
 #include "llvm/Support/Windows/WindowsSupport.h"
 #endif

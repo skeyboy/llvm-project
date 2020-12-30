@@ -37,6 +37,14 @@
 # include <fcntl.h>
 #endif
 
+#ifdef __APPLE__
+#include <TargetConditionals.h>
+#if (TARGET_OS_IPHONE || TARGET_IPHONE_SIMULATOR)
+#include "ios_error.h"
+#define abort() ios_exit(1)
+#endif
+#endif
+
 using namespace llvm;
 
 static fatal_error_handler_t ErrorHandler = nullptr;
@@ -114,7 +122,11 @@ void llvm::report_fatal_error(const Twine &Reason, bool GenCrashDiag) {
     raw_svector_ostream OS(Buffer);
     OS << "LLVM ERROR: " << Reason << "\n";
     StringRef MessageStr = OS.str();
+#if (TARGET_OS_IPHONE || TARGET_IPHONE_SIMULATOR)
+    ssize_t written = ::write(fileno(thread_stderr), MessageStr.data(), MessageStr.size());
+#else    
     ssize_t written = ::write(2, MessageStr.data(), MessageStr.size());
+#endif
     (void)written; // If something went wrong, we deliberately just give up.
   }
 
@@ -170,9 +182,15 @@ void llvm::report_bad_alloc_error(const char *Reason, bool GenCrashDiag) {
   // an OOM to stderr and abort.
   const char *OOMMessage = "LLVM ERROR: out of memory\n";
   const char *Newline = "\n";
+#if (TARGET_OS_IPHONE || TARGET_IPHONE_SIMULATOR)
+    (void) ::write(fileno(thread_stderr), OOMMessage, strlen(OOMMessage));
+    (void) ::write(fileno(thread_stderr), Reason, strlen(Reason));
+    (void) ::write(fileno(thread_stderr), Newline, strlen(Newline));
+#else      
   (void)!::write(2, OOMMessage, strlen(OOMMessage));
   (void)!::write(2, Reason, strlen(Reason));
   (void)!::write(2, Newline, strlen(Newline));
+#endif
   abort();
 #endif
 }
@@ -193,9 +211,13 @@ static void out_of_memory_new_handler() {
 // InitLLVM.
 void llvm::install_out_of_memory_new_handler() {
   std::new_handler old = std::set_new_handler(out_of_memory_new_handler);
+#if !TARGET_OS_IPHONE && !TARGET_IPHONE_SIMULATOR
+    // We are sharing memory between threads on iOS.
+    // The handler could have been installed earlier without it being a bug.    
   (void)old;
   assert((old == nullptr || old == out_of_memory_new_handler) &&
          "new-handler already installed");
+#endif
 }
 #endif
 

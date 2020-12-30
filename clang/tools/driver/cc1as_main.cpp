@@ -55,6 +55,14 @@
 #include "llvm/Support/raw_ostream.h"
 #include <memory>
 #include <system_error>
+
+#ifdef __APPLE__
+#include <TargetConditionals.h>
+#if (TARGET_OS_IPHONE || TARGET_IPHONE_SIMULATOR)
+#include "ios_error.h"
+#endif
+#endif
+
 using namespace clang;
 using namespace clang::driver;
 using namespace clang::driver::options;

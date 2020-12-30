@@ -17,6 +17,15 @@
 #include "llvm/IR/DerivedTypes.h"
 #include "llvm/IR/Module.h"
 #include <cstring>
+
+#ifdef __APPLE__
+#include <TargetConditionals.h>
+#if (TARGET_OS_IPHONE || TARGET_IPHONE_SIMULATOR)
+#include "ios_error.h"
+// #include "llvm/Support/DynamicLibrary.h"
+#endif
+#endif
+
 using namespace llvm;
 
 namespace {

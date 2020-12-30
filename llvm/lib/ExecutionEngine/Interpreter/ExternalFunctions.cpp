@@ -55,6 +55,17 @@
 #endif
 #endif
 
+#ifdef __APPLE__
+#include <TargetConditionals.h>
+#if (TARGET_OS_IPHONE || TARGET_IPHONE_SIMULATOR)
+#include <CoreFoundation/CoreFoundation.h>
+#include <objc/objc.h>
+#include <objc/message.h>
+#include "ios_error.h"
+#include <fcntl.h>
+#endif
+#endif
+
 using namespace llvm;
 
 static ManagedStatic<sys::Mutex> FunctionsLock;
@@ -111,6 +122,12 @@ static ExFunc lookupFunction(const Function *F) {
   ExFunc FnPtr = (*FuncNames)[ExtName];
   if (!FnPtr)
     FnPtr = (*FuncNames)[("lle_X_" + F->getName()).str()];
+#if (TARGET_OS_IPHONE || TARGET_IPHONE_SIMULATOR)
+  if (!FnPtr && (F->getName().str().at(0) == '\x01')) {
+	  std::string funcName = std::string(F->getName().substr(1,  F->getName().size() - 1)); 
+	  FnPtr = (*FuncNames)[("lle_X_" + funcName)];  
+  }
+#endif
   if (!FnPtr)  // Try calling a generic function... if it exists...
     FnPtr = (ExFunc)(intptr_t)sys::DynamicLibrary::SearchForAddressOfSymbol(
         ("lle_X_" + F->getName()).str());
@@ -136,6 +153,10 @@ static ffi_type *ffiTypeFor(Type *Ty) {
     default: break;
   }
   // TODO: Support other types such as StructTyID, ArrayTyID, OpaqueTyID, etc.
+  // So, for Swift, it's a StructTyID that breaks things. 
+#if (TARGET_OS_IPHONE || TARGET_IPHONE_SIMULATOR)
+  fprintf(thread_stderr, "Type error: type= %d \n", Ty->getTypeID());
+#endif
   report_fatal_error("Type could not be mapped for use with libffi.");
   return NULL;
 }
@@ -184,6 +205,9 @@ static void *ffiValueFor(Type *Ty, const GenericValue &AV,
     default: break;
   }
   // TODO: Support other types such as StructTyID, ArrayTyID, OpaqueTyID, etc.
+#if (TARGET_OS_IPHONE || TARGET_IPHONE_SIMULATOR)
+  fprintf(thread_stderr, "Type value error: type= %d \n", Ty->getTypeID());
+#endif
   report_fatal_error("Type value could not be mapped for use with libffi.");
   return NULL;
 }
@@ -318,15 +342,20 @@ static GenericValue lle_X_atexit(FunctionType *FT,
 
 // void exit(int)
 static GenericValue lle_X_exit(FunctionType *FT, ArrayRef<GenericValue> Args) {
+	// TODO: insert here cleanup functions, if required.
   TheInterpreter->exitCalled(Args[0]);
   return GenericValue();
 }
 
 // void abort(void)
 static GenericValue lle_X_abort(FunctionType *FT, ArrayRef<GenericValue> Args) {
+#if (TARGET_OS_IPHONE || TARGET_IPHONE_SIMULATOR)
+       report_fatal_error("LLVM interpreter raised SIGABRT");
+#else 
   //FIXME: should we report or raise here?
   //report_fatal_error("Interpreted program raised SIGABRT");
   raise (SIGABRT);
+#endif
   return GenericValue();
 }
 
@@ -449,8 +478,15 @@ static GenericValue lle_X_scanf(FunctionType *FT, ArrayRef<GenericValue> args) {
     Args[i] = (char*)GVTOP(args[i]);
 
   GenericValue GV;
+#if (TARGET_OS_IPHONE || TARGET_IPHONE_SIMULATOR)
+  outs().flush();
+  fflush(thread_stdout);
+  GV.IntVal = APInt(32, fscanf(thread_stdin, Args[0], Args[1], Args[2], Args[3], Args[4],
+                  Args[5], Args[6], Args[7], Args[8], Args[9]));
+#else
   GV.IntVal = APInt(32, scanf( Args[0], Args[1], Args[2], Args[3], Args[4],
                     Args[5], Args[6], Args[7], Args[8], Args[9]));
+#endif
   return GV;
 }
 
@@ -493,6 +529,111 @@ static GenericValue lle_X_memcpy(FunctionType *FT,
   return GV;
 }
 
+#if (TARGET_OS_IPHONE || TARGET_IPHONE_SIMULATOR)
+
+// Required because it's a vararg function
+static GenericValue lle_X_open(FunctionType *FT,
+                                 ArrayRef<GenericValue> Args) {
+  int oflag = (int)Args[1].IntVal.getSExtValue();
+  int returnValue;
+  
+  if (Args.size() == 2) {
+         returnValue = ::open((char*)GVTOP(Args[0]), oflag);
+  } else {
+         int mode = (int)Args[2].IntVal.getSExtValue();
+         returnValue = ::open((char*)GVTOP(Args[0]), oflag, mode);
+         if (Args.size() > 3) errs() << "called open(" << (char*)GVTOP(Args[0]) << ", ...) with " << Args.size() << " arguments.\n"; 
+  }
+  GenericValue GV;
+  GV.IntVal = APInt(32, returnValue);
+  return GV;
+}
+// 
+const char* llvm_ios_progname; 
+//   void warn(const char *fmt, ...);
+static GenericValue lle_X_warn(FunctionType *FT, ArrayRef<GenericValue> Args) {
+       fputs(llvm_ios_progname, thread_stderr);
+       const char *fmt = (const char *)GVTOP(Args[0]);
+       if (fmt != NULL)
+       {
+               fputs(": ", thread_stderr);
+               char Buffer[10000];
+               std::vector<GenericValue> NewArgs;
+               NewArgs.push_back(PTOGV((void*)&Buffer[0]));
+               NewArgs.insert(NewArgs.end(), Args.begin(), Args.end());
+               GenericValue GV = lle_X_sprintf(FT, NewArgs);
+               fputs(Buffer, thread_stderr); 
+       }
+       fputs(": ", thread_stderr);
+       fputs(strerror(errno), thread_stderr);
+       putc('\n', thread_stderr);
+       return GenericValue();
+}
+//   void warnx(const char *fmt, ...);
+static GenericValue lle_X_warnx(FunctionType *FT, ArrayRef<GenericValue> Args) {
+       fputs(llvm_ios_progname, thread_stderr);
+       const char *fmt = (const char *)GVTOP(Args[0]);
+       if (fmt != NULL)
+       {
+               fputs(": ", thread_stderr);
+               char Buffer[10000];
+               std::vector<GenericValue> NewArgs;
+               NewArgs.push_back(PTOGV((void*)&Buffer[0]));
+               NewArgs.insert(NewArgs.end(), Args.begin(), Args.end());
+               GenericValue GV = lle_X_sprintf(FT, NewArgs);
+               fputs(Buffer, thread_stderr); 
+       }
+       putc('\n', thread_stderr);
+       return GenericValue();
+}
+// void err(int eval, const char *fmt, ...);
+static GenericValue lle_X_err(FunctionType *FT, ArrayRef<GenericValue> Args) {
+       std::vector<GenericValue> NewArgs = Args;
+       NewArgs.erase(NewArgs.begin());
+       lle_X_warn(FT, NewArgs); 
+       TheInterpreter->exitCalled(Args[0]);
+       return GenericValue();
+}
+//      void errx(int eval, const char *fmt, ...);
+static GenericValue lle_X_errx(FunctionType *FT, ArrayRef<GenericValue> Args) {
+       std::vector<GenericValue> NewArgs = Args;
+       NewArgs.erase(NewArgs.begin());
+       lle_X_warnx(FT, NewArgs); 
+       TheInterpreter->exitCalled(Args[0]);
+       return GenericValue();
+}
+
+#if 0
+// Objective-C:
+static GenericValue lle_X_objc_msgSend(FunctionType *FT,
+                                 ArrayRef<GenericValue> args) {
+       // Note: that method fails at runtime, with: 
+       // selector () for message 'stringByAppendingString:' does not match selector known to Objective C runtime ()-- abort
+       // Needs linking with -f Foundation -f CoreFoundation. HOW?
+
+  id self = (objc_object *)GVTOP(args[0]); 
+  SEL op = (SEL)GVTOP(args[1]);
+    
+  GenericValue GV;
+  if (args.size() <= 2) 
+         GV.PointerVal = *(void **) objc_msgSend(self, op); 
+  else {
+         objc_object *Args[10];
+         for (unsigned i = 2; i < args.size(); ++i)
+                 Args[i - 2] = (objc_object *)GVTOP(args[i]);
+
+         GenericValue GV;
+         // Add -lobjc to bootstrap.sh before removal
+         GV.PointerVal = *(void **) (id)objc_msgSend(self, op, Args[0], Args[1], Args[2], Args[3], Args[4],
+                         Args[5], Args[6], Args[7], Args[8], Args[9]);
+  }
+  return GV;
+}
+// 
+#endif 
+
+#endif //  (TARGET_OS_IPHONE || TARGET_IPHONE_SIMULATOR)
+
 void Interpreter::initializeExternalFunctions() {
   sys::ScopedLock Writer(*FunctionsLock);
   (*FuncNames)["lle_X_atexit"]       = lle_X_atexit;
@@ -506,4 +647,15 @@ void Interpreter::initializeExternalFunctions() {
   (*FuncNames)["lle_X_fprintf"]      = lle_X_fprintf;
   (*FuncNames)["lle_X_memset"]       = lle_X_memset;
   (*FuncNames)["lle_X_memcpy"]       = lle_X_memcpy;
+#if (TARGET_OS_IPHONE || TARGET_IPHONE_SIMULATOR)
+  // Variadic argument functions (vararg). 
+  (*FuncNames)["lle_X_open"]     = lle_X_open;
+  (*FuncNames)["lle_X__open"]     = lle_X_open;
+  (*FuncNames)["lle_X_err"]     = lle_X_err;
+  (*FuncNames)["lle_X_errx"]     = lle_X_errx;
+  (*FuncNames)["lle_X_warn"]     = lle_X_warn;
+  (*FuncNames)["lle_X_warnx"]     = lle_X_warnx;
+  // objective-C -- todo again
+  // (*FuncNames)["lle_X_objc_msgSend"]     = lle_X_objc_msgSend;
+#endif
 }

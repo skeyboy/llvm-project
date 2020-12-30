@@ -19,6 +19,13 @@
 #include "llvm/TableGen/Record.h"
 #include <cstdlib>
 
+#ifdef __APPLE__
+#include <TargetConditionals.h>
+#if (TARGET_OS_IPHONE || TARGET_IPHONE_SIMULATOR)
+#include "ios_error.h"
+#endif
+#endif
+
 namespace llvm {
 
 SourceMgr SrcMgr;
@@ -56,14 +63,22 @@ void PrintFatalNote(const Twine &Msg) {
   PrintNote(Msg);
   // The following call runs the file cleanup handlers.
   sys::RunInterruptHandlers();
+#if (TARGET_OS_IPHONE || TARGET_IPHONE_SIMULATOR)
+  ios_exit(1); 
+#else
   std::exit(1);
+#endif
 }
 
 void PrintFatalNote(ArrayRef<SMLoc> NoteLoc, const Twine &Msg) {
   PrintNote(NoteLoc, Msg);
   // The following call runs the file cleanup handlers.
   sys::RunInterruptHandlers();
+#if (TARGET_OS_IPHONE || TARGET_IPHONE_SIMULATOR)
+  ios_exit(1); 
+#else
   std::exit(1);
+#endif
 }
 
 // This method takes a Record and uses the source location
@@ -72,7 +87,11 @@ void PrintFatalNote(const Record *Rec, const Twine &Msg) {
   PrintNote(Rec->getLoc(), Msg);
   // The following call runs the file cleanup handlers.
   sys::RunInterruptHandlers();
+#if (TARGET_OS_IPHONE || TARGET_IPHONE_SIMULATOR)
+  ios_exit(1); 
+#else
   std::exit(1);
+#endif
 }
 
 // This method takes a RecordVal and uses the source location
@@ -81,7 +100,11 @@ void PrintFatalNote(const RecordVal *RecVal, const Twine &Msg) {
   PrintNote(RecVal->getLoc(), Msg);
   // The following call runs the file cleanup handlers.
   sys::RunInterruptHandlers();
+#if (TARGET_OS_IPHONE || TARGET_IPHONE_SIMULATOR)
+  ios_exit(1); 
+#else
   std::exit(1);
+#endif
 }
 
 // Functions to print warnings.
@@ -126,14 +149,22 @@ void PrintFatalError(const Twine &Msg) {
   PrintError(Msg);
   // The following call runs the file cleanup handlers.
   sys::RunInterruptHandlers();
+#if (TARGET_OS_IPHONE || TARGET_IPHONE_SIMULATOR)
+  ios_exit(1); 
+#else
   std::exit(1);
+#endif
 }
 
 void PrintFatalError(ArrayRef<SMLoc> ErrorLoc, const Twine &Msg) {
   PrintError(ErrorLoc, Msg);
   // The following call runs the file cleanup handlers.
   sys::RunInterruptHandlers();
+#if (TARGET_OS_IPHONE || TARGET_IPHONE_SIMULATOR)
+  ios_exit(1); 
+#else
   std::exit(1);
+#endif
 }
 
 // This method takes a Record and uses the source location
@@ -142,7 +173,11 @@ void PrintFatalError(const Record *Rec, const Twine &Msg) {
   PrintError(Rec->getLoc(), Msg);
   // The following call runs the file cleanup handlers.
   sys::RunInterruptHandlers();
+#if (TARGET_OS_IPHONE || TARGET_IPHONE_SIMULATOR)
+  ios_exit(1); 
+#else
   std::exit(1);
+#endif
 }
 
 // This method takes a RecordVal and uses the source location
@@ -151,7 +186,11 @@ void PrintFatalError(const RecordVal *RecVal, const Twine &Msg) {
   PrintError(RecVal->getLoc(), Msg);
   // The following call runs the file cleanup handlers.
   sys::RunInterruptHandlers();
+#if (TARGET_OS_IPHONE || TARGET_IPHONE_SIMULATOR)
+  ios_exit(1); 
+#else
   std::exit(1);
+#endif
 }
 
 } // end namespace llvm

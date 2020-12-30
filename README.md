@@ -1,6 +1,6 @@
 # The LLVM Compiler Infrastructure
 
-This directory and its sub-directories contain source code for LLVM,
+This directory and its sub-directories contain a forked source code for LLVM,
 a toolkit for the construction of highly optimized compilers,
 optimizers, and run-time environments.
 
@@ -108,3 +108,36 @@ Consult the
 page for detailed information on configuring and compiling LLVM. You can visit
 [Directory Layout](https://llvm.org/docs/GettingStarted.html#directory-layout)
 to learn about the layout of the source code tree.
+
+iOS version specific information
+================================
+
+This is a very experimental port. It's is designed to work inside ios_system
+(https://github.com/holzschu/ios_system), which itself is supposed to be 
+embedded inside shell applications such as OpenTerm or Blink:
+- https://github.com/louisdh/terminal
+- https://github.com/holzschu/blink
+
+Compilation of the entire package takes around 20h (divided by the number of 
+cores you can give to the compiler). For this reason, even the scripts are 
+not fully guaranteed to work. 
+
+The steps for compilation are:
+- compile LLVM, clang, lld, libcxx and libcxxabi for OSX
+- make sure ios_system has been compiled, and if not compile it.
+- compile LLVM and clang for iOS (that's the long step)
+
+"bootstrap.sh" in this directory takes care of all these steps. Remember, 
+you have time for a long walk in the woods while it compiles. 
+
+Once you have compiled everything, add the binaries you want (at least clang) 
+to the list of embedded binaries, along with libLLVM.dylib and libclang.dylib.
+See `project.pbxproj` in this directory for an example.
+
+Commands in `project.pbxproj`: clang, llvm-link, opt, llvm-dis 
+
+Once you have the binaries inside your app, you need to provide the header files. I copied the ones from the Xcode iPhone SDK into ~/usr/include, and the ones from build_ios/lib/clang/7.0.0/include/ into ~/lib/clang/7.0.0/include/ This will need some thinking.
+
+I welcome all help on this project, including on this README file. 
+
+

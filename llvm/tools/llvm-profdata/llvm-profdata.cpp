@@ -33,6 +33,14 @@
 #include "llvm/Support/raw_ostream.h"
 #include <algorithm>
 
+#ifdef __APPLE__
+#include <TargetConditionals.h>
+#if (TARGET_OS_IPHONE || TARGET_IPHONE_SIMULATOR)
+#include "ios_error.h"
+#undef write
+#endif
+#endif
+
 using namespace llvm;
 
 enum ProfileFormat {
@@ -62,7 +70,12 @@ static void exitWithError(Twine Message, std::string Whence = "",
   errs() << Message << "\n";
   if (!Hint.empty())
     WithColor::note() << Hint << "\n";
+#if (TARGET_OS_IPHONE || TARGET_IPHONE_SIMULATOR)
+  llvm_shutdown(); 
+  ios_exit(1);
+#else
   ::exit(1);
+#endif
 }
 
 static void exitWithError(Error E, StringRef Whence = "") {

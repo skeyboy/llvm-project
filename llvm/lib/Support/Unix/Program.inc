@@ -46,6 +46,13 @@
 
 #if defined(__APPLE__)
 #include <TargetConditionals.h>
+#if (TARGET_OS_IPHONE || TARGET_IPHONE_SIMULATOR)
+#undef HAVE_POSIX_SPAWN // function is present, but not working
+#include "ios_error.h"
+#include <libgen.h>
+#undef getenv 
+#define fork ios_fork
+#endif
 #endif
 
 #if defined(__APPLE__) && !(defined(TARGET_OS_IPHONE) && TARGET_OS_IPHONE)
@@ -175,7 +182,11 @@ static bool Execute(ProcessInfo &PI, StringRef Program,
                     ArrayRef<StringRef> Args, Optional<ArrayRef<StringRef>> Env,
                     ArrayRef<Optional<StringRef>> Redirects,
                     unsigned MemoryLimit, std::string *ErrMsg) {
-  if (!llvm::sys::fs::exists(Program)) {
+  if (!llvm::sys::fs::exists(Program) 
+#if (TARGET_OS_IPHONE || TARGET_IPHONE_SIMULATOR)
+       && !ios_executable(Program.str().c_str())  // one of the commands in ios_system
+#endif
+  ) {
     if (ErrMsg)
       *ErrMsg = std::string("Executable \"") + Program.str() +
                 std::string("\" doesn't exist!");
@@ -275,8 +286,13 @@ static bool Execute(ProcessInfo &PI, StringRef Program,
       MakeErrMsg(ErrMsg, "Couldn't fork");
       return false;
 
+#if (!TARGET_OS_IPHONE && !TARGET_IPHONE_SIMULATOR)
     // Child process: Execute the program.
     case 0: {
+#else
+       // iOS: execute both branches each time
+       default: {
+#endif 
       // Redirect file descriptors...
       if (!Redirects.empty()) {
         // Redirect stdin
@@ -314,12 +330,16 @@ static bool Execute(ProcessInfo &PI, StringRef Program,
       // object destructors cloned from the parent process aren't
       // redundantly run, and so that any data buffered in stdio buffers
       // cloned from the parent aren't redundantly written out.
+#if (!TARGET_OS_IPHONE && !TARGET_IPHONE_SIMULATOR)
       _exit(errno == ENOENT ? 127 : 126);
+#endif
     }
 
+#if (!TARGET_OS_IPHONE && !TARGET_IPHONE_SIMULATOR)
     // Parent process: Break out of the switch to do our processing.
     default:
       break;
+#endif
   }
 
   PI.Pid = child;
@@ -377,6 +397,14 @@ pid_t (llvm::sys::wait4)(pid_t pid, int *status, int options,
 ProcessInfo llvm::sys::Wait(const ProcessInfo &PI, unsigned SecondsToWait,
                             bool WaitUntilTerminates, std::string *ErrMsg,
                             Optional<ProcessStatistics> *ProcStat) {
+  int status;
+  ProcessInfo WaitResult;
+#if (TARGET_OS_IPHONE || TARGET_IPHONE_SIMULATOR)
+  // iOS: just wait for the process to terminate
+  // TODO: check whether the more sophisticated version below works
+  // with latest iOS_system.
+  WaitResult.Pid = waitpid(PI.Pid, &status, 0);
+#else
   struct sigaction Act, Old;
   assert(PI.Pid && "invalid pid to wait on, process not started?");
 
@@ -398,8 +426,6 @@ ProcessInfo llvm::sys::Wait(const ProcessInfo &PI, unsigned SecondsToWait,
     WaitPidOptions = WNOHANG;
 
   // Parent process: Wait for the child process to terminate.
-  int status;
-  ProcessInfo WaitResult;
   rusage Info;
   if (ProcStat)
     ProcStat->reset();
@@ -451,6 +477,7 @@ ProcessInfo llvm::sys::Wait(const ProcessInfo &PI, unsigned SecondsToWait,
     uint64_t PeakMemory = static_cast<uint64_t>(Info.ru_maxrss);
     *ProcStat = ProcessStatistics{UserT + KernelT, UserT, PeakMemory};
   }
+#endif // (TARGET_OS_IPHONE || TARGET_IPHONE_SIMULATOR)
 
   // Return the proper exit status. Detect error conditions
   // so we can return -1 for them and set ErrMsg informatively.

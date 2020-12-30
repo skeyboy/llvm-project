@@ -18,6 +18,10 @@
 #include "llvm/Support/Path.h"
 #include "llvm/Option/ArgList.h"
 
+#ifdef __APPLE__
+#include <TargetConditionals.h>
+#endif
+
 using namespace clang::driver;
 using namespace clang::driver::tools;
 using namespace clang::driver::toolchains;
@@ -160,9 +164,15 @@ WebAssembly::WebAssembly(const Driver &D, const llvm::Triple &Triple,
 
   assert(Triple.isArch32Bit() != Triple.isArch64Bit());
 
-  getProgramPaths().push_back(getDriver().getInstalledDir());
-
   auto SysRoot = getDriver().SysRoot;
+#if TARGET_OS_IPHONE || TARGET_IPHONE_SIMULATOR
+  // on iOS, compilers are installed elsewhere, but we pretend they are in 
+  // $SYSROOT/usr/bin: 
+  getProgramPaths().push_back(SysRoot + "/usr/bin/");
+#else          
+  getProgramPaths().push_back(getDriver().getInstalledDir());
+#endif
+
   if (getTriple().getOS() == llvm::Triple::UnknownOS) {
     // Theoretically an "unknown" OS should mean no standard libraries, however
     // it could also mean that a custom set of libraries is in use, so just add

@@ -9,6 +9,13 @@
 #include <fcntl.h>
 #endif
 
+#ifdef __APPLE__
+#include <TargetConditionals.h>
+#if (TARGET_OS_IPHONE || TARGET_IPHONE_SIMULATOR)
+#include "ios_error.h"
+#endif
+#endif
+
 static int print_remappings(const char *path) {
   CXRemapping remap;
   unsigned i, N;

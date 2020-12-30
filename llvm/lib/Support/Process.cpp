@@ -25,6 +25,17 @@
 using namespace llvm;
 using namespace sys;
 
+#ifdef __APPLE__ 
+#include <TargetConditionals.h>
+#if TARGET_OS_IPHONE || TARGET_IPHONE_SIMULATOR
+#include "ios_error.h"
+#undef exit
+#undef getenv
+#define exit(a) { llvm_shutdown(); ios_exit(a); }
+#define isatty ios_isatty 
+#endif
+#endif
+
 //===----------------------------------------------------------------------===//
 //=== WARNING: Implementation here must contain only TRULY operating system
 //===          independent code.
@@ -97,10 +108,14 @@ void Process::Exit(int RetCode, bool NoCleanup) {
   if (CrashRecoveryContext *CRC = CrashRecoveryContext::GetCurrent())
     CRC->HandleExit(RetCode);
 
+#if TARGET_OS_IPHONE
+  ios_exit(RetCode); 
+#else
   if (NoCleanup)
     _Exit(RetCode);
   else
     ::exit(RetCode);
+#endif
 }
 
 // Include the platform-specific parts of this class.

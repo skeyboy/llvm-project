@@ -28,6 +28,14 @@
 #include "llvm/Support/VirtualFileSystem.h"
 #include <cstdlib> // ::getenv
 
+#ifdef __APPLE__
+#include <TargetConditionals.h>
+#if (TARGET_OS_IPHONE || TARGET_IPHONE_SIMULATOR)
+#include "ios_error.h"
+#undef getenv
+#endif
+#endif 
+
 using namespace clang::driver;
 using namespace clang::driver::tools;
 using namespace clang::driver::toolchains;
@@ -2055,8 +2063,15 @@ void DarwinClang::AddClangCXXStdlibIncludeArgs(
     // Get from '<install>/bin' to '<install>/include/c++/v1'.
     // Note that InstallBin can be relative, so we use '..' instead of
     // parent_path.
+#if TARGET_OS_IPHONE || TARGET_IPHONE_SIMULATOR
+      // on iOS, compilers are installed elsewhere, but we pretend they are in 
+      // $SYSROOT/usr/bin 
+      llvm::SmallString<128> InstallBin = Sysroot;
+      llvm::sys::path::append(InstallBin, "usr", "bin");
+#else          
     llvm::SmallString<128> InstallBin =
         llvm::StringRef(getDriver().getInstalledDir()); // <install>/bin
+#endif
     llvm::sys::path::append(InstallBin, "..", "include", "c++", "v1");
     if (getVFS().exists(InstallBin)) {
       addSystemInclude(DriverArgs, CC1Args, InstallBin);

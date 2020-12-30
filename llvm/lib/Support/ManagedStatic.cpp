@@ -14,6 +14,17 @@
 #include "llvm/Config/config.h"
 #include "llvm/Support/Threading.h"
 #include <cassert>
+
+#ifdef __APPLE__
+#include <TargetConditionals.h>
+#if (TARGET_OS_IPHONE || TARGET_IPHONE_SIMULATOR)
+#include <llvm-c/Support.h>
+#include "ios_error.h"
+#undef write
+#undef exit
+#endif
+#endif
+
 #include <mutex>
 using namespace llvm;
 
@@ -80,4 +91,20 @@ void llvm::llvm_shutdown() {
 
   while (StaticList)
     StaticList->destroy();
+#if TARGET_OS_IPHONE
+  // Reset signal handler(s) (except SIGUSR2, reserved by Python):
+  (void)signal(SIGUSR1, SIG_DFL);
+  (void)signal(SIGHUP, SIG_DFL);
+  (void)signal(SIGINT, SIG_DFL);
+  (void)signal(SIGPIPE, SIG_DFL);
+  (void)signal(SIGTERM, SIG_DFL);
+  (void)signal(SIGILL, SIG_DFL);
+  (void)signal(SIGTRAP, SIG_DFL);
+  (void)signal(SIGABRT, SIG_DFL);
+  (void)signal(SIGFPE, SIG_DFL);
+  (void)signal(SIGBUS, SIG_DFL);
+  (void)signal(SIGSEGV, SIG_DFL);
+  (void)signal(SIGQUIT, SIG_DFL);
+  (void)signal(SIGINFO, SIG_DFL);
+#endif
 }
