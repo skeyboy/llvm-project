@@ -13,57 +13,57 @@ let package = Package(
         .binaryTarget(
             name: "ar",
             url: "https://github.com/holzschu/llvm-project/releases/download/1.0/ar.xcframework.zip",
-            checksum: "5a57c35a5574d6f7abc7a26f13ff9d44ceb837f2e1e93195a64de840601a72dc"
+            checksum: "2324599f8b382c35ac185a0ff0cc66870372e6f5e17ba1558f972cdc185f1d9b"
         ),
         .binaryTarget(
             name: "lld",
             url: "https://github.com/holzschu/llvm-project/releases/download/1.0/lld.xcframework.zip",
-            checksum: "6f29ff5781e47da712acf1bf5f6e9bec375ee0cbe096bfd5e87b41917003cf78"
+            checksum: "b9bda95e780a402b79f95d05af04ae655757a433441a673f0de51ad1c9b4eaaa"
         ),
         .binaryTarget(
             name: "llc",
             url: "https://github.com/holzschu/llvm-project/releases/download/1.0/llc.xcframework.zip",
-            checksum: "dfe415ccb4de0ca3150da566bb642fb698ef4482f62947133f15a809b979c704"
+            checksum: "5db6d552637b332095e446ab87dd6688237723c483aed1770d66b0ad408bfd59"
         ),
         .binaryTarget(
             name: "clang",
             url: "https://github.com/holzschu/llvm-project/releases/download/1.0/clang.xcframework.zip",
-            checksum: "5beee49166f19bbbd2661fa4780a9fac2224a3ef083c17a768bfab31dfd1a083"
+            checksum: "735a1024e2be56d2509f7901ca6568abf60082295088af110d8159079f2f4492"
         ),
         .binaryTarget(
             name: "dis",
             url: "https://github.com/holzschu/llvm-project/releases/download/1.0/dis.xcframework.zip",
-            checksum: "587cb7b16f826b949fc2c65b7d92460e498a95d4ca194bd962d1776da674a50b"
+            checksum: "5782bdc12ac79ee4bf7a89ba1939af21890ff4971989da8d917e17907f8f7e28"
         ),
         .binaryTarget(
             name: "libLLVM",
             url: "https://github.com/holzschu/llvm-project/releases/download/1.0/libLLVM.xcframework.zip",
-            checksum: "7609369830ece09e9deb9be6b0afdf6cc01560e928b8d2e9f0227e1562f8993d"
+            checksum: "aa9ff2f52f92d58d1efc038d4ca5c47496d811f8326713213de9b3b52817e4cf"
         ),
         .binaryTarget(
             name: "link",
             url: "https://github.com/holzschu/llvm-project/releases/download/1.0/link.xcframework.zip",
-            checksum: "63cc448e197dd7426b3fdf414ce2f9844ae09e1a8e35feb67a0d74a528b0c434"
+            checksum: "ac853d12fe438f1607a37a5b5c8f50375f068eeb58888058059fb12dc748082b"
         ),
         .binaryTarget(
             name: "lli",
             url: "https://github.com/holzschu/llvm-project/releases/download/1.0/lli.xcframework.zip",
-            checksum: "0012ebfffa424ac15c6d02cc698b69eaf914e142313e5339f92cf186c55f7fea"
+            checksum: "9a7217b7c2ec1466da1e63e32ba88bbdfe80109a59a3cbbbc40bafb452970e6a"
         ),
         .binaryTarget(
             name: "nm",
             url: "https://github.com/holzschu/llvm-project/releases/download/1.0/nm.xcframework.zip",
-            checksum: "2e7f1ab7286ed14d2f1f7d60e1f1a335b9d73a9c1fb0efe7d102f6c1e9198d63"
+            checksum: "027873452b881e1f186ae08d182492f9f09e4edf5657704abfdd4bb1fc3eb2d3"
         ),
         .binaryTarget(
             name: "opt",
             url: "https://github.com/holzschu/llvm-project/releases/download/1.0/opt.xcframework.zip",
-            checksum: "7f1c8dcd233c2d31678a3896a7213eae6c5d19544bb69965c07d779756ba2026"
+            checksum: "668e6e3dba1f553e9d6e7e8f425730b864b7e5030caf0a67cfb96025bba1d5ef"
         )
     ]
 )
 
 
 
-/* Merging into xcframeworks:
+/* Merging into xcframeworks: 
  */
