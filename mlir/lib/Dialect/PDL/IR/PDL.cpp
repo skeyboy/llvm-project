@@ -7,9 +7,9 @@
 //===----------------------------------------------------------------------===//
 
 #include "mlir/Dialect/PDL/IR/PDL.h"
+#include "mlir/Dialect/PDL/IR/PDLOps.h"
 #include "mlir/Dialect/PDL/IR/PDLTypes.h"
 #include "mlir/IR/BuiltinTypes.h"
-#include "mlir/IR/DialectImplementation.h"
 #include "mlir/Interfaces/InferTypeOpInterface.h"
 #include "llvm/ADT/StringSwitch.h"
 
@@ -25,38 +25,10 @@ void PDLDialect::initialize() {
 #define GET_OP_LIST
 #include "mlir/Dialect/PDL/IR/PDLOps.cpp.inc"
       >();
-  addTypes<AttributeType, OperationType, TypeType, ValueType>();
-}
-
-Type PDLDialect::parseType(DialectAsmParser &parser) const {
-  StringRef keyword;
-  if (parser.parseKeyword(&keyword))
-    return Type();
-
-  Builder &builder = parser.getBuilder();
-  Type result = StringSwitch<Type>(keyword)
-                    .Case("attribute", builder.getType<AttributeType>())
-                    .Case("operation", builder.getType<OperationType>())
-                    .Case("type", builder.getType<TypeType>())
-                    .Case("value", builder.getType<ValueType>())
-                    .Default(Type());
-  if (!result)
-    parser.emitError(parser.getNameLoc(), "invalid 'pdl' type: `")
-        << keyword << "'";
-  return result;
-}
-
-void PDLDialect::printType(Type type, DialectAsmPrinter &printer) const {
-  if (type.isa<AttributeType>())
-    printer << "attribute";
-  else if (type.isa<OperationType>())
-    printer << "operation";
-  else if (type.isa<TypeType>())
-    printer << "type";
-  else if (type.isa<ValueType>())
-    printer << "value";
-  else
-    llvm_unreachable("unknown 'pdl' type");
+  addTypes<
+#define GET_TYPEDEF_LIST
+#include "mlir/Dialect/PDL/IR/PDLOpsTypes.cpp.inc"
+      >();
 }
 
 /// Returns true if the given operation is used by a "binding" pdl operation
@@ -71,7 +43,7 @@ verifyHasBindingUseInMatcher(Operation *op,
   for (Operation *user : op->getUsers()) {
     if (user->getBlock() != matcherBlock)
       continue;
-    if (isa<AttributeOp, InputOp, OperationOp, RewriteOp>(user))
+    if (isa<AttributeOp, OperandOp, OperationOp, RewriteOp>(user))
       return success();
   }
   return op->emitOpError()
@@ -106,10 +78,10 @@ static LogicalResult verify(AttributeOp op) {
 }
 
 //===----------------------------------------------------------------------===//
-// pdl::InputOp
+// pdl::OperandOp
 //===----------------------------------------------------------------------===//
 
-static LogicalResult verify(InputOp op) {
+static LogicalResult verify(OperandOp op) {
   return verifyHasBindingUseInMatcher(op);
 }
 
@@ -209,7 +181,7 @@ static void print(OpAsmPrinter &p, OperationOp op) {
   // Print the result type constraints of the operation.
   if (!op.results().empty())
     p << " -> " << op.types();
-  p.printOptionalAttrDict(op.getAttrs(),
+  p.printOptionalAttrDict(op->getAttrs(),
                           {"attributeNames", "name", "operand_segment_sizes"});
 }
 
@@ -296,7 +268,7 @@ static LogicalResult verify(OperationOp op) {
                             << resultTypes.size() << " constraints";
   }
 
-  // If the operation is within a rewrite body and doesn't have type inferrence,
+  // If the operation is within a rewrite body and doesn't have type inference,
   // ensure that the result types can be resolved.
   if (isWithinRewrite && !op.hasTypeInference()) {
     if (failed(verifyResultTypesAreInferrable(op, opResults, resultTypes)))
@@ -447,7 +419,7 @@ static LogicalResult verify(RewriteOp op) {
 
 static LogicalResult verify(TypeOp op) {
   return verifyHasBindingUseInMatcher(
-      op, "`pdl.attribute`, `pdl.input`, or `pdl.operation`");
+      op, "`pdl.attribute`, `pdl.operand`, or `pdl.operation`");
 }
 
 //===----------------------------------------------------------------------===//

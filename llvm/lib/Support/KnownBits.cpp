@@ -85,36 +85,18 @@ KnownBits KnownBits::computeForAddSub(bool Add, bool NSW,
 
 KnownBits KnownBits::sextInReg(unsigned SrcBitWidth) const {
   unsigned BitWidth = getBitWidth();
-  assert(BitWidth >= SrcBitWidth && "Illegal sext-in-register");
+  assert(0 < SrcBitWidth && SrcBitWidth <= BitWidth &&
+         "Illegal sext-in-register");
 
-  // Sign extension.  Compute the demanded bits in the result that are not
-  // present in the input.
-  APInt NewBits = APInt::getHighBitsSet(BitWidth, BitWidth - SrcBitWidth);
+  if (SrcBitWidth == BitWidth)
+    return *this;
 
-  // If the sign extended bits are demanded, we know that the sign
-  // bit is demanded.
-  APInt InSignMask = APInt::getSignMask(SrcBitWidth).zext(BitWidth);
-  APInt InDemandedBits = APInt::getLowBitsSet(BitWidth, SrcBitWidth);
-  if (NewBits.getBoolValue())
-    InDemandedBits |= InSignMask;
-
+  unsigned ExtBits = BitWidth - SrcBitWidth;
   KnownBits Result;
-  Result.One = One & InDemandedBits;
-  Result.Zero = Zero & InDemandedBits;
-
-  // If the sign bit of the input is known set or clear, then we know the
-  // top bits of the result.
-  if (Result.Zero.intersects(InSignMask)) { // Input sign bit known clear
-    Result.Zero |= NewBits;
-    Result.One &= ~NewBits;
-  } else if (Result.One.intersects(InSignMask)) { // Input sign bit known set
-    Result.One |= NewBits;
-    Result.Zero &= ~NewBits;
-  } else { // Input sign bit unknown
-    Result.Zero &= ~NewBits;
-    Result.One &= ~NewBits;
-  }
-
+  Result.One = One << ExtBits;
+  Result.Zero = Zero << ExtBits;
+  Result.One.ashrInPlace(ExtBits);
+  Result.Zero.ashrInPlace(ExtBits);
   return Result;
 }
 
@@ -199,8 +181,9 @@ KnownBits KnownBits::shl(const KnownBits &LHS, const KnownBits &RHS) {
   unsigned MinTrailingZeros = LHS.countMinTrailingZeros();
 
   // Minimum shift amount low bits are known zero.
-  if (RHS.getMinValue().ult(BitWidth)) {
-    MinTrailingZeros += RHS.getMinValue().getZExtValue();
+  APInt MinShiftAmount = RHS.getMinValue();
+  if (MinShiftAmount.ult(BitWidth)) {
+    MinTrailingZeros += MinShiftAmount.getZExtValue();
     MinTrailingZeros = std::min(MinTrailingZeros, BitWidth);
   }
 
@@ -226,8 +209,9 @@ KnownBits KnownBits::lshr(const KnownBits &LHS, const KnownBits &RHS) {
   unsigned MinLeadingZeros = LHS.countMinLeadingZeros();
 
   // Minimum shift amount high bits are known zero.
-  if (RHS.getMinValue().ult(BitWidth)) {
-    MinLeadingZeros += RHS.getMinValue().getZExtValue();
+  APInt MinShiftAmount = RHS.getMinValue();
+  if (MinShiftAmount.ult(BitWidth)) {
+    MinLeadingZeros += MinShiftAmount.getZExtValue();
     MinLeadingZeros = std::min(MinLeadingZeros, BitWidth);
   }
 
@@ -252,13 +236,14 @@ KnownBits KnownBits::ashr(const KnownBits &LHS, const KnownBits &RHS) {
   unsigned MinLeadingOnes = LHS.countMinLeadingOnes();
 
   // Minimum shift amount high bits are known sign bits.
-  if (RHS.getMinValue().ult(BitWidth)) {
+  APInt MinShiftAmount = RHS.getMinValue();
+  if (MinShiftAmount.ult(BitWidth)) {
     if (MinLeadingZeros) {
-      MinLeadingZeros += RHS.getMinValue().getZExtValue();
+      MinLeadingZeros += MinShiftAmount.getZExtValue();
       MinLeadingZeros = std::min(MinLeadingZeros, BitWidth);
     }
     if (MinLeadingOnes) {
-      MinLeadingOnes += RHS.getMinValue().getZExtValue();
+      MinLeadingOnes += MinShiftAmount.getZExtValue();
       MinLeadingOnes = std::min(MinLeadingOnes, BitWidth);
     }
   }
@@ -271,9 +256,6 @@ KnownBits KnownBits::ashr(const KnownBits &LHS, const KnownBits &RHS) {
 Optional<bool> KnownBits::eq(const KnownBits &LHS, const KnownBits &RHS) {
   if (LHS.isConstant() && RHS.isConstant())
     return Optional<bool>(LHS.getConstant() == RHS.getConstant());
-  if (LHS.getMaxValue().ult(RHS.getMinValue()) ||
-      LHS.getMinValue().ugt(RHS.getMaxValue()))
-    return Optional<bool>(false);
   if (LHS.One.intersects(RHS.Zero) || RHS.One.intersects(LHS.Zero))
     return Optional<bool>(false);
   return None;
@@ -286,8 +268,6 @@ Optional<bool> KnownBits::ne(const KnownBits &LHS, const KnownBits &RHS) {
 }
 
 Optional<bool> KnownBits::ugt(const KnownBits &LHS, const KnownBits &RHS) {
-  if (LHS.isConstant() && RHS.isConstant())
-    return Optional<bool>(LHS.getConstant().ugt(RHS.getConstant()));
   // LHS >u RHS -> false if umax(LHS) <= umax(RHS)
   if (LHS.getMaxValue().ule(RHS.getMinValue()))
     return Optional<bool>(false);
@@ -312,8 +292,6 @@ Optional<bool> KnownBits::ule(const KnownBits &LHS, const KnownBits &RHS) {
 }
 
 Optional<bool> KnownBits::sgt(const KnownBits &LHS, const KnownBits &RHS) {
-  if (LHS.isConstant() && RHS.isConstant())
-    return Optional<bool>(LHS.getConstant().sgt(RHS.getConstant()));
   // LHS >s RHS -> false if smax(LHS) <= smax(RHS)
   if (LHS.getSignedMaxValue().sle(RHS.getSignedMinValue()))
     return Optional<bool>(false);
@@ -499,9 +477,10 @@ KnownBits KnownBits::srem(const KnownBits &LHS, const KnownBits &RHS) {
   }
 
   // The sign bit is the LHS's sign bit, except when the result of the
-  // remainder is zero. If it's known zero, our sign bit is also zero.
-  if (LHS.isNonNegative())
-    Known.makeNonNegative();
+  // remainder is zero. The magnitude of the result should be less than or
+  // equal to the magnitude of the LHS. Therefore any leading zeros that exist
+  // in the left hand side must also exist in the result.
+  Known.Zero.setHighBits(LHS.countMinLeadingZeros());
   return Known;
 }
 

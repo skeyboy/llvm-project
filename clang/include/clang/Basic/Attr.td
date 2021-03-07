@@ -324,6 +324,7 @@ class LangOpt<string name, code customCode = [{}]> {
 def MicrosoftExt : LangOpt<"MicrosoftExt">;
 def Borland : LangOpt<"Borland">;
 def CUDA : LangOpt<"CUDA">;
+def HIP : LangOpt<"HIP">;
 def SYCL : LangOpt<"SYCLIsDevice">;
 def COnly : LangOpt<"", "!LangOpts.CPlusPlus">;
 def CPlusPlus : LangOpt<"CPlusPlus">;
@@ -675,6 +676,13 @@ def AlignValue : Attr {
 }
 
 def AlignMac68k : InheritableAttr {
+  // This attribute has no spellings as it is only ever created implicitly.
+  let Spellings = [];
+  let SemaHandler = 0;
+  let Documentation = [Undocumented];
+}
+
+def AlignNatural : InheritableAttr {
   // This attribute has no spellings as it is only ever created implicitly.
   let Spellings = [];
   let SemaHandler = 0;
@@ -1108,6 +1116,13 @@ def CUDAHost : InheritableAttr {
   let Documentation = [Undocumented];
 }
 
+def HIPManaged : InheritableAttr {
+  let Spellings = [GNU<"managed">, Declspec<"__managed__">];
+  let Subjects = SubjectList<[Var]>;
+  let LangOpts = [HIP];
+  let Documentation = [HIPManagedAttrDocs];
+}
+
 def CUDAInvalidTarget : InheritableAttr {
   let Spellings = [];
   let Subjects = SubjectList<[Function]>;
@@ -1163,8 +1178,10 @@ def OpenCLKernel : InheritableAttr {
   let SimpleHandler = 1;
 }
 
-def OpenCLUnrollHint : InheritableAttr {
+def OpenCLUnrollHint : StmtAttr {
   let Spellings = [GNU<"opencl_unroll_hint">];
+//  let Subjects = SubjectList<[ForStmt, CXXForRangeStmt, WhileStmt, DoStmt],
+//                             ErrorDiag, "'for', 'while', and 'do' statements">;
   let Args = [UnsignedArgument<"UnrollHint">];
   let Documentation = [OpenCLUnrollHintDocs];
 }
@@ -1798,6 +1815,13 @@ def ReturnsNonNull : InheritableAttr {
   let Documentation = [ReturnsNonNullDocs];
 }
 
+def CalledOnce : Attr {
+  let Spellings = [Clang<"called_once">];
+  let Subjects = SubjectList<[ParmVar]>;
+  let LangOpts = [ObjC];
+  let Documentation = [CalledOnceDocs];
+}
+
 // pass_object_size(N) indicates that the parameter should have
 // __builtin_object_size with Type=N evaluated on the parameter at the callsite.
 def PassObjectSize : InheritableParamAttr {
@@ -2377,6 +2401,16 @@ def SwiftAsync : InheritableAttr {
   let Documentation = [SwiftAsyncDocs];
 }
 
+def SwiftAsyncError : InheritableAttr {
+  let Spellings = [Clang<"swift_async_error">];
+  let Subjects = SubjectList<[Function, ObjCMethod]>;
+  let Args = [EnumArgument<"Convention", "ConventionKind",
+              ["none", "nonnull_error", "zero_argument", "nonzero_argument"],
+              ["None", "NonNullError", "ZeroArgument", "NonZeroArgument"]>,
+              UnsignedArgument<"HandlerParamIdx", /*opt=*/1>];
+  let Documentation = [SwiftAsyncErrorDocs];
+}
+
 def Suppress : StmtAttr {
   let Spellings = [CXX11<"gsl", "suppress">];
   let Args = [VariadicStringArgument<"DiagnosticIdentifiers">];
@@ -2614,7 +2648,14 @@ def Unused : InheritableAttr {
 def Used : InheritableAttr {
   let Spellings = [GCC<"used">];
   let Subjects = SubjectList<[NonLocalVar, Function, ObjCMethod]>;
-  let Documentation = [Undocumented];
+  let Documentation = [UsedDocs];
+  let SimpleHandler = 1;
+}
+
+def Retain : InheritableAttr {
+  let Spellings = [GCC<"retain">];
+  let Subjects = SubjectList<[NonLocalVar, Function, ObjCMethod]>;
+  let Documentation = [RetainDocs];
   let SimpleHandler = 1;
 }
 
@@ -3368,8 +3409,10 @@ def LoopHint : Attr {
                            "PipelineDisabled", "PipelineInitiationInterval", "Distribute",
                            "VectorizePredicate"]>,
               EnumArgument<"State", "LoopHintState",
-                           ["enable", "disable", "numeric", "assume_safety", "full"],
-                           ["Enable", "Disable", "Numeric", "AssumeSafety", "Full"]>,
+                           ["enable", "disable", "numeric", "fixed_width",
+                            "scalable_width", "assume_safety", "full"],
+                           ["Enable", "Disable", "Numeric", "FixedWidth",
+                            "ScalableWidth", "AssumeSafety", "Full"]>,
               ExprArgument<"Value">];
 
   let AdditionalMembers = [{
@@ -3643,4 +3686,20 @@ def Builtin : InheritableAttr {
   let Subjects = SubjectList<[Function]>;
   let SemaHandler = 0;
   let Documentation = [Undocumented];
+}
+
+def EnforceTCB : InheritableAttr {
+  let Spellings = [Clang<"enforce_tcb">];
+  let Subjects = SubjectList<[Function]>;
+  let Args = [StringArgument<"TCBName">];
+  let Documentation = [EnforceTCBDocs];
+  bit InheritEvenIfAlreadyPresent = 1;
+}
+
+def EnforceTCBLeaf : InheritableAttr {
+  let Spellings = [Clang<"enforce_tcb_leaf">];
+  let Subjects = SubjectList<[Function]>;
+  let Args = [StringArgument<"TCBName">];
+  let Documentation = [EnforceTCBLeafDocs];
+  bit InheritEvenIfAlreadyPresent = 1;
 }

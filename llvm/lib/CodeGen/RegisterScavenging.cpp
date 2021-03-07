@@ -91,7 +91,7 @@ void RegScavenger::enterBasicBlockEnd(MachineBasicBlock &MBB) {
   LiveUnits.addLiveOuts(MBB);
 
   // Move internal iterator at the last instruction of the block.
-  if (MBB.begin() != MBB.end()) {
+  if (!MBB.empty()) {
     MBBI = std::prev(MBB.end());
     Tracking = true;
   }
@@ -167,13 +167,12 @@ void RegScavenger::forward() {
 
   MachineInstr &MI = *MBBI;
 
-  for (SmallVectorImpl<ScavengedInfo>::iterator I = Scavenged.begin(),
-         IE = Scavenged.end(); I != IE; ++I) {
-    if (I->Restore != &MI)
+  for (ScavengedInfo &I : Scavenged) {
+    if (I.Restore != &MI)
       continue;
 
-    I->Reg = 0;
-    I->Restore = nullptr;
+    I.Reg = 0;
+    I.Restore = nullptr;
   }
 
   if (MI.isDebugInstr())
@@ -634,11 +633,10 @@ static Register scavengeVReg(MachineRegisterInfo &MRI, RegScavenger &RS,
   // we get a single contiguous lifetime.
   //
   // Definitions in MRI.def_begin() are unordered, search for the first.
-  MachineRegisterInfo::def_iterator FirstDef =
-    std::find_if(MRI.def_begin(VReg), MRI.def_end(),
-                 [VReg, &TRI](const MachineOperand &MO) {
-      return !MO.getParent()->readsRegister(VReg, &TRI);
-    });
+  MachineRegisterInfo::def_iterator FirstDef = llvm::find_if(
+      MRI.def_operands(VReg), [VReg, &TRI](const MachineOperand &MO) {
+        return !MO.getParent()->readsRegister(VReg, &TRI);
+      });
   assert(FirstDef != MRI.def_end() &&
          "Must have one definition that does not redefine vreg");
   MachineInstr &DefMI = *FirstDef->getParent();

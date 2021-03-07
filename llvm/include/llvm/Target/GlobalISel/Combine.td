@@ -267,7 +267,8 @@ def select_constant_cmp: GICombineRule<
 // Fold x op 0 -> x
 def right_identity_zero: GICombineRule<
   (defs root:$root),
-  (match (wip_match_opcode G_SUB, G_ADD, G_OR, G_XOR, G_SHL, G_ASHR, G_LSHR):$root,
+  (match (wip_match_opcode G_SUB, G_ADD, G_OR, G_XOR, G_SHL, G_ASHR, G_LSHR,
+                           G_PTR_ADD):$root,
     [{ return Helper.matchConstantOp(${root}->getOperand(2), 0); }]),
   (apply [{ return Helper.replaceSingleDefInstWithOperand(*${root}, 1); }])
 >;
@@ -294,6 +295,13 @@ def binop_left_to_zero: GICombineRule<
   (match (wip_match_opcode G_SDIV, G_UDIV, G_SREM, G_UREM):$root,
     [{ return Helper.matchOperandIsZero(*${root}, 1); }]),
   (apply [{ return Helper.replaceSingleDefInstWithOperand(*${root}, 1); }])
+>;
+
+def urem_pow2_to_mask : GICombineRule<
+  (defs root:$root),
+  (match (wip_match_opcode G_UREM):$root,
+    [{ return Helper.matchOperandIsKnownToBeAPowerOfTwo(*${root}, 2); }]),
+  (apply [{ return Helper.applySimplifyURemByPow2(*${root}); }])
 >;
 
 // Fold (x op 0) - > 0
@@ -416,7 +424,17 @@ def anyext_trunc_fold: GICombineRule <
   (defs root:$root, anyext_trunc_fold_matchinfo:$matchinfo),
   (match (wip_match_opcode G_ANYEXT):$root,
          [{ return Helper.matchCombineAnyExtTrunc(*${root}, ${matchinfo}); }]),
-  (apply [{ return Helper.applyCombineAnyExtTrunc(*${root}, ${matchinfo}); }])
+  (apply [{ return Helper.replaceSingleDefInstWithReg(*${root}, ${matchinfo}); }])
+>;
+
+// Fold (zext (trunc x)) -> x if the source type is same as the destination type
+// and truncated bits are known to be zero.
+def zext_trunc_fold_matchinfo : GIDefMatchData<"Register">;
+def zext_trunc_fold: GICombineRule <
+  (defs root:$root, zext_trunc_fold_matchinfo:$matchinfo),
+  (match (wip_match_opcode G_ZEXT):$root,
+         [{ return Helper.matchCombineZextTrunc(*${root}, ${matchinfo}); }]),
+  (apply [{ return Helper.replaceSingleDefInstWithReg(*${root}, ${matchinfo}); }])
 >;
 
 // Fold ([asz]ext ([asz]ext x)) -> ([asz]ext x).
@@ -460,7 +478,7 @@ def fabs_fabs_fold: GICombineRule<
   (defs root:$root, fabs_fabs_fold_matchinfo:$matchinfo),
   (match (wip_match_opcode G_FABS):$root,
          [{ return Helper.matchCombineFAbsOfFAbs(*${root}, ${matchinfo}); }]),
-  (apply [{ return Helper.applyCombineFAbsOfFAbs(*${root}, ${matchinfo}); }])
+  (apply [{ return Helper.replaceSingleDefInstWithReg(*${root}, ${matchinfo}); }])
 >;
 
 // Fold (unmerge cst) -> cst1, cst2, ...
@@ -538,6 +556,21 @@ def combine_insert_vec_elts_build_vector : GICombineRule<
     [{ return Helper.matchCombineInsertVecElts(*${root}, ${info}); }]),
   (apply [{ return Helper.applyCombineInsertVecElts(*${root}, ${info}); }])>;
 
+def load_or_combine_matchdata :
+GIDefMatchData<"std::function<void(MachineIRBuilder &)>">;
+def load_or_combine : GICombineRule<
+  (defs root:$root, load_or_combine_matchdata:$info),
+  (match (wip_match_opcode G_OR):$root,
+    [{ return Helper.matchLoadOrCombine(*${root}, ${info}); }]),
+  (apply [{ return Helper.applyLoadOrCombine(*${root}, ${info}); }])>;
+
+def extend_through_phis_matchdata: GIDefMatchData<"MachineInstr*">;
+def extend_through_phis : GICombineRule<
+  (defs root:$root, extend_through_phis_matchdata:$matchinfo),
+  (match (wip_match_opcode G_PHI):$root,
+    [{ return Helper.matchExtendThroughPhis(*${root}, ${matchinfo}); }]),
+  (apply [{ return Helper.applyExtendThroughPhis(*${root}, ${matchinfo}); }])>;
+
 // Currently only the one combine above.
 def insert_vec_elt_combines : GICombineGroup<
                             [combine_insert_vec_elts_build_vector]>;
@@ -560,9 +593,12 @@ def identity_combines : GICombineGroup<[select_same_val, right_identity_zero,
 def const_combines : GICombineGroup<[constant_fp_op, const_ptradd_to_i2p]>;
 
 def known_bits_simplifications : GICombineGroup<[
-  redundant_and, redundant_sext_inreg, redundant_or]>;
+  redundant_and, redundant_sext_inreg, redundant_or, urem_pow2_to_mask,
+  zext_trunc_fold]>;
 
 def width_reduction_combines : GICombineGroup<[reduce_shl_of_extend]>;
+
+def phi_combines : GICombineGroup<[extend_through_phis]>;
 
 def select_combines : GICombineGroup<[select_undef_cmp, select_constant_cmp]>;
 
@@ -571,7 +607,7 @@ def trivial_combines : GICombineGroup<[copy_prop, mul_to_shl, add_p2i_to_ptradd,
 
 def all_combines : GICombineGroup<[trivial_combines, insert_vec_elt_combines,
     ptr_add_immed_chain, combines_for_extload, combine_indexed_load_store,
-    undef_combines, identity_combines, simplify_add_to_sub,
+    undef_combines, identity_combines, phi_combines, simplify_add_to_sub,
     hoist_logic_op_with_same_opcode_hands,
     shl_ashr_to_sext_inreg, sext_inreg_of_load,
     width_reduction_combines, select_combines,
@@ -580,4 +616,4 @@ def all_combines : GICombineGroup<[trivial_combines, insert_vec_elt_combines,
     unmerge_merge, fabs_fabs_fold, unmerge_cst, unmerge_dead_to_trunc,
     unmerge_zext_to_zext, trunc_ext_fold, trunc_shl,
     const_combines, xor_of_and_with_same_reg, ptr_add_with_zero,
-    shift_immed_chain, shift_of_shifted_logic_chain]>;
+    shift_immed_chain, shift_of_shifted_logic_chain, load_or_combine]>;

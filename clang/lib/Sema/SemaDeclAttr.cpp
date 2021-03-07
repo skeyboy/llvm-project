@@ -40,6 +40,7 @@
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/StringExtras.h"
 #include "llvm/IR/Assumptions.h"
+#include "llvm/Support/Error.h"
 #include "llvm/Support/MathExtras.h"
 #include "llvm/Support/raw_ostream.h"
 
@@ -1393,7 +1394,7 @@ static void handlePreferredName(Sema &S, Decl *D, const ParsedAttr &AL) {
   if (!TSI)
     TSI = S.Context.getTrivialTypeSourceInfo(T, AL.getLoc());
 
-  if (!T.hasQualifiers() && T->getAs<TypedefType>()) {
+  if (!T.hasQualifiers() && T->isTypedefNameType()) {
     // Find the template name, if this type names a template specialization.
     const TemplateDecl *Template = nullptr;
     if (const auto *CTSD = dyn_cast_or_null<ClassTemplateSpecializationDecl>(
@@ -3052,10 +3053,10 @@ SectionAttr *Sema::mergeSectionAttr(Decl *D, const AttributeCommonInfo &CI,
 }
 
 bool Sema::checkSectionName(SourceLocation LiteralLoc, StringRef SecName) {
-  std::string Error = Context.getTargetInfo().isValidSectionSpecifier(SecName);
-  if (!Error.empty()) {
-    Diag(LiteralLoc, diag::err_attribute_section_invalid_for_target) << Error
-         << 1 /*'section'*/;
+  if (llvm::Error E =
+          Context.getTargetInfo().isValidSectionSpecifier(SecName)) {
+    Diag(LiteralLoc, diag::err_attribute_section_invalid_for_target)
+        << toString(std::move(E)) << 1 /*'section'*/;
     return false;
   }
   return true;
@@ -3073,10 +3074,9 @@ static void handleSectionAttr(Sema &S, Decl *D, const ParsedAttr &AL) {
     return;
 
   // If the target wants to validate the section specifier, make it happen.
-  std::string Error = S.Context.getTargetInfo().isValidSectionSpecifier(Str);
-  if (!Error.empty()) {
+  if (llvm::Error E = S.Context.getTargetInfo().isValidSectionSpecifier(Str)) {
     S.Diag(LiteralLoc, diag::err_attribute_section_invalid_for_target)
-    << Error;
+        << toString(std::move(E));
     return;
   }
 
@@ -3095,11 +3095,10 @@ static void handleSectionAttr(Sema &S, Decl *D, const ParsedAttr &AL) {
 // `#pragma code_seg("segname")` uses checkSectionName() instead.
 static bool checkCodeSegName(Sema &S, SourceLocation LiteralLoc,
                              StringRef CodeSegName) {
-  std::string Error =
-      S.Context.getTargetInfo().isValidSectionSpecifier(CodeSegName);
-  if (!Error.empty()) {
+  if (llvm::Error E =
+          S.Context.getTargetInfo().isValidSectionSpecifier(CodeSegName)) {
     S.Diag(LiteralLoc, diag::err_attribute_section_invalid_for_target)
-        << Error << 0 /*'code-seg'*/;
+        << toString(std::move(E)) << 0 /*'code-seg'*/;
     return false;
   }
 
@@ -3691,6 +3690,26 @@ static void handleCallbackAttr(Sema &S, Decl *D, const ParsedAttr &AL) {
 
   D->addAttr(::new (S.Context) CallbackAttr(
       S.Context, AL, EncodingIndices.data(), EncodingIndices.size()));
+}
+
+static bool isFunctionLike(const Type &T) {
+  // Check for explicit function types.
+  // 'called_once' is only supported in Objective-C and it has
+  // function pointers and block pointers.
+  return T.isFunctionPointerType() || T.isBlockPointerType();
+}
+
+/// Handle 'called_once' attribute.
+static void handleCalledOnceAttr(Sema &S, Decl *D, const ParsedAttr &AL) {
+  // 'called_once' only applies to parameters representing functions.
+  QualType T = cast<ParmVarDecl>(D)->getType();
+
+  if (!isFunctionLike(*T)) {
+    S.Diag(AL.getLoc(), diag::err_called_once_attribute_wrong_type);
+    return;
+  }
+
+  D->addAttr(::new (S.Context) CalledOnceAttr(S.Context, AL));
 }
 
 static void handleTransparentUnionAttr(Sema &S, Decl *D, const ParsedAttr &AL) {
@@ -4473,7 +4492,8 @@ static void handleOptimizeNoneAttr(Sema &S, Decl *D, const ParsedAttr &AL) {
 }
 
 static void handleConstantAttr(Sema &S, Decl *D, const ParsedAttr &AL) {
-  if (checkAttrMutualExclusion<CUDASharedAttr>(S, D, AL))
+  if (checkAttrMutualExclusion<CUDASharedAttr>(S, D, AL) ||
+      checkAttrMutualExclusion<HIPManagedAttr>(S, D, AL))
     return;
   const auto *VD = cast<VarDecl>(D);
   if (VD->hasLocalStorage()) {
@@ -4484,7 +4504,8 @@ static void handleConstantAttr(Sema &S, Decl *D, const ParsedAttr &AL) {
 }
 
 static void handleSharedAttr(Sema &S, Decl *D, const ParsedAttr &AL) {
-  if (checkAttrMutualExclusion<CUDAConstantAttr>(S, D, AL))
+  if (checkAttrMutualExclusion<CUDAConstantAttr>(S, D, AL) ||
+      checkAttrMutualExclusion<HIPManagedAttr>(S, D, AL))
     return;
   const auto *VD = cast<VarDecl>(D);
   // extern __shared__ is only allowed on arrays with no length (e.g.
@@ -4549,7 +4570,31 @@ static void handleDeviceAttr(Sema &S, Decl *D, const ParsedAttr &AL) {
       return;
     }
   }
+
+  if (auto *A = D->getAttr<CUDADeviceAttr>()) {
+    if (!A->isImplicit())
+      return;
+    D->dropAttr<CUDADeviceAttr>();
+  }
   D->addAttr(::new (S.Context) CUDADeviceAttr(S.Context, AL));
+}
+
+static void handleManagedAttr(Sema &S, Decl *D, const ParsedAttr &AL) {
+  if (checkAttrMutualExclusion<CUDAConstantAttr>(S, D, AL) ||
+      checkAttrMutualExclusion<CUDASharedAttr>(S, D, AL)) {
+    return;
+  }
+
+  if (const auto *VD = dyn_cast<VarDecl>(D)) {
+    if (VD->hasLocalStorage()) {
+      S.Diag(AL.getLoc(), diag::err_cuda_nonstatic_constdev);
+      return;
+    }
+  }
+  if (!D->hasAttr<HIPManagedAttr>())
+    D->addAttr(::new (S.Context) HIPManagedAttr(S.Context, AL));
+  if (!D->hasAttr<CUDADeviceAttr>())
+    D->addAttr(CUDADeviceAttr::CreateImplicit(S.Context));
 }
 
 static void handleGNUInlineAttr(Sema &S, Decl *D, const ParsedAttr &AL) {
@@ -5705,9 +5750,11 @@ static void handleSwiftBridge(Sema &S, Decl *D, const ParsedAttr &AL) {
   if (!S.checkStringLiteralArgumentAttr(AL, 0, BT))
     return;
 
-  // Don't duplicate annotations that are already set.
-  if (D->hasAttr<SwiftBridgeAttr>()) {
-    S.Diag(AL.getLoc(), diag::warn_duplicate_attribute) << AL;
+  // Warn about duplicate attributes if they have different arguments, but drop
+  // any duplicate attributes regardless.
+  if (const auto *Other = D->getAttr<SwiftBridgeAttr>()) {
+    if (Other->getSwiftType() != BT)
+      S.Diag(AL.getLoc(), diag::warn_duplicate_attribute) << AL;
     return;
   }
 
@@ -5808,6 +5855,125 @@ static void handleSwiftError(Sema &S, Decl *D, const ParsedAttr &AL) {
   }
 
   D->addAttr(::new (S.Context) SwiftErrorAttr(S.Context, AL, Convention));
+}
+
+static void checkSwiftAsyncErrorBlock(Sema &S, Decl *D,
+                                      const SwiftAsyncErrorAttr *ErrorAttr,
+                                      const SwiftAsyncAttr *AsyncAttr) {
+  if (AsyncAttr->getKind() == SwiftAsyncAttr::None) {
+    if (ErrorAttr->getConvention() != SwiftAsyncErrorAttr::None) {
+      S.Diag(AsyncAttr->getLocation(),
+             diag::err_swift_async_error_without_swift_async)
+          << AsyncAttr << isa<ObjCMethodDecl>(D);
+    }
+    return;
+  }
+
+  const ParmVarDecl *HandlerParam = getFunctionOrMethodParam(
+      D, AsyncAttr->getCompletionHandlerIndex().getASTIndex());
+  // handleSwiftAsyncAttr already verified the type is correct, so no need to
+  // double-check it here.
+  const auto *FuncTy = HandlerParam->getType()
+                           ->getAs<BlockPointerType>()
+                           ->getPointeeType()
+                           ->getAs<FunctionProtoType>();
+  ArrayRef<QualType> BlockParams;
+  if (FuncTy)
+    BlockParams = FuncTy->getParamTypes();
+
+  switch (ErrorAttr->getConvention()) {
+  case SwiftAsyncErrorAttr::ZeroArgument:
+  case SwiftAsyncErrorAttr::NonZeroArgument: {
+    uint32_t ParamIdx = ErrorAttr->getHandlerParamIdx();
+    if (ParamIdx == 0 || ParamIdx > BlockParams.size()) {
+      S.Diag(ErrorAttr->getLocation(),
+             diag::err_attribute_argument_out_of_bounds) << ErrorAttr << 2;
+      return;
+    }
+    QualType ErrorParam = BlockParams[ParamIdx - 1];
+    if (!ErrorParam->isIntegralType(S.Context)) {
+      StringRef ConvStr =
+          ErrorAttr->getConvention() == SwiftAsyncErrorAttr::ZeroArgument
+              ? "zero_argument"
+              : "nonzero_argument";
+      S.Diag(ErrorAttr->getLocation(), diag::err_swift_async_error_non_integral)
+          << ErrorAttr << ConvStr << ParamIdx << ErrorParam;
+      return;
+    }
+    break;
+  }
+  case SwiftAsyncErrorAttr::NonNullError: {
+    bool AnyErrorParams = false;
+    for (QualType Param : BlockParams) {
+      // Check for NSError *.
+      if (const auto *ObjCPtrTy = Param->getAs<ObjCObjectPointerType>()) {
+        if (const auto *ID = ObjCPtrTy->getInterfaceDecl()) {
+          if (ID->getIdentifier() == S.getNSErrorIdent()) {
+            AnyErrorParams = true;
+            break;
+          }
+        }
+      }
+      // Check for CFError *.
+      if (const auto *PtrTy = Param->getAs<PointerType>()) {
+        if (const auto *RT = PtrTy->getPointeeType()->getAs<RecordType>()) {
+          if (S.isCFError(RT->getDecl())) {
+            AnyErrorParams = true;
+            break;
+          }
+        }
+      }
+    }
+
+    if (!AnyErrorParams) {
+      S.Diag(ErrorAttr->getLocation(),
+             diag::err_swift_async_error_no_error_parameter)
+          << ErrorAttr << isa<ObjCMethodDecl>(D);
+      return;
+    }
+    break;
+  }
+  case SwiftAsyncErrorAttr::None:
+    break;
+  }
+}
+
+static void handleSwiftAsyncError(Sema &S, Decl *D, const ParsedAttr &AL) {
+  IdentifierLoc *IDLoc = AL.getArgAsIdent(0);
+  SwiftAsyncErrorAttr::ConventionKind ConvKind;
+  if (!SwiftAsyncErrorAttr::ConvertStrToConventionKind(IDLoc->Ident->getName(),
+                                                       ConvKind)) {
+    S.Diag(AL.getLoc(), diag::warn_attribute_type_not_supported)
+        << AL << IDLoc->Ident;
+    return;
+  }
+
+  uint32_t ParamIdx = 0;
+  switch (ConvKind) {
+  case SwiftAsyncErrorAttr::ZeroArgument:
+  case SwiftAsyncErrorAttr::NonZeroArgument: {
+    if (!checkAttributeNumArgs(S, AL, 2))
+      return;
+
+    Expr *IdxExpr = AL.getArgAsExpr(1);
+    if (!checkUInt32Argument(S, AL, IdxExpr, ParamIdx))
+      return;
+    break;
+  }
+  case SwiftAsyncErrorAttr::NonNullError:
+  case SwiftAsyncErrorAttr::None: {
+    if (!checkAttributeNumArgs(S, AL, 1))
+      return;
+    break;
+  }
+  }
+
+  auto *ErrorAttr =
+      ::new (S.Context) SwiftAsyncErrorAttr(S.Context, AL, ConvKind, ParamIdx);
+  D->addAttr(ErrorAttr);
+
+  if (auto *AsyncAttr = D->getAttr<SwiftAsyncAttr>())
+    checkSwiftAsyncErrorBlock(S, D, ErrorAttr, AsyncAttr);
 }
 
 // For a function, this will validate a compound Swift name, e.g.
@@ -6194,7 +6360,12 @@ static void handleSwiftAsyncAttr(Sema &S, Decl *D, const ParsedAttr &AL) {
     }
   }
 
-  D->addAttr(::new (S.Context) SwiftAsyncAttr(S.Context, AL, Kind, Idx));
+  auto *AsyncAttr =
+      ::new (S.Context) SwiftAsyncAttr(S.Context, AL, Kind, Idx);
+  D->addAttr(AsyncAttr);
+
+  if (auto *ErrorAttr = D->getAttr<SwiftAsyncErrorAttr>())
+    checkSwiftAsyncErrorBlock(S, D, ErrorAttr, AsyncAttr);
 }
 
 //===----------------------------------------------------------------------===//
@@ -7497,6 +7668,75 @@ static void handleCFGuardAttr(Sema &S, Decl *D, const ParsedAttr &AL) {
   D->addAttr(::new (S.Context) CFGuardAttr(S.Context, AL, Arg));
 }
 
+
+template <typename AttrTy>
+static const AttrTy *findEnforceTCBAttrByName(Decl *D, StringRef Name) {
+  auto Attrs = D->specific_attrs<AttrTy>();
+  auto I = llvm::find_if(Attrs,
+                         [Name](const AttrTy *A) {
+                           return A->getTCBName() == Name;
+                         });
+  return I == Attrs.end() ? nullptr : *I;
+}
+
+template <typename AttrTy, typename ConflictingAttrTy>
+static void handleEnforceTCBAttr(Sema &S, Decl *D, const ParsedAttr &AL) {
+  StringRef Argument;
+  if (!S.checkStringLiteralArgumentAttr(AL, 0, Argument))
+    return;
+
+  // A function cannot be have both regular and leaf membership in the same TCB.
+  if (const ConflictingAttrTy *ConflictingAttr =
+      findEnforceTCBAttrByName<ConflictingAttrTy>(D, Argument)) {
+    // We could attach a note to the other attribute but in this case
+    // there's no need given how the two are very close to each other.
+    S.Diag(AL.getLoc(), diag::err_tcb_conflicting_attributes)
+      << AL.getAttrName()->getName() << ConflictingAttr->getAttrName()->getName()
+      << Argument;
+
+    // Error recovery: drop the non-leaf attribute so that to suppress
+    // all future warnings caused by erroneous attributes. The leaf attribute
+    // needs to be kept because it can only suppresses warnings, not cause them.
+    D->dropAttr<EnforceTCBAttr>();
+    return;
+  }
+
+  D->addAttr(AttrTy::Create(S.Context, Argument, AL));
+}
+
+template <typename AttrTy, typename ConflictingAttrTy>
+static AttrTy *mergeEnforceTCBAttrImpl(Sema &S, Decl *D, const AttrTy &AL) {
+  // Check if the new redeclaration has different leaf-ness in the same TCB.
+  StringRef TCBName = AL.getTCBName();
+  if (const ConflictingAttrTy *ConflictingAttr =
+      findEnforceTCBAttrByName<ConflictingAttrTy>(D, TCBName)) {
+    S.Diag(ConflictingAttr->getLoc(), diag::err_tcb_conflicting_attributes)
+      << ConflictingAttr->getAttrName()->getName()
+      << AL.getAttrName()->getName() << TCBName;
+
+    // Add a note so that the user could easily find the conflicting attribute.
+    S.Diag(AL.getLoc(), diag::note_conflicting_attribute);
+
+    // More error recovery.
+    D->dropAttr<EnforceTCBAttr>();
+    return nullptr;
+  }
+
+  ASTContext &Context = S.getASTContext();
+  return ::new(Context) AttrTy(Context, AL, AL.getTCBName());
+}
+
+EnforceTCBAttr *Sema::mergeEnforceTCBAttr(Decl *D, const EnforceTCBAttr &AL) {
+  return mergeEnforceTCBAttrImpl<EnforceTCBAttr, EnforceTCBLeafAttr>(
+      *this, D, AL);
+}
+
+EnforceTCBLeafAttr *Sema::mergeEnforceTCBLeafAttr(
+    Decl *D, const EnforceTCBLeafAttr &AL) {
+  return mergeEnforceTCBAttrImpl<EnforceTCBLeafAttr, EnforceTCBAttr>(
+      *this, D, AL);
+}
+
 //===----------------------------------------------------------------------===//
 // Top Level Sema Entry Points
 //===----------------------------------------------------------------------===//
@@ -7692,6 +7932,9 @@ static void ProcessDeclAttribute(Sema &S, Scope *scope, Decl *D,
   case ParsedAttr::AT_Callback:
     handleCallbackAttr(S, D, AL);
     break;
+  case ParsedAttr::AT_CalledOnce:
+    handleCalledOnceAttr(S, D, AL);
+    break;
   case ParsedAttr::AT_CUDAGlobal:
     handleGlobalAttr(S, D, AL);
     break;
@@ -7700,6 +7943,9 @@ static void ProcessDeclAttribute(Sema &S, Scope *scope, Decl *D,
     break;
   case ParsedAttr::AT_CUDAHost:
     handleSimpleAttributeWithExclusions<CUDAHostAttr, CUDAGlobalAttr>(S, D, AL);
+    break;
+  case ParsedAttr::AT_HIPManaged:
+    handleManagedAttr(S, D, AL);
     break;
   case ParsedAttr::AT_CUDADeviceBuiltinSurfaceType:
     handleSimpleAttributeWithExclusions<CUDADeviceBuiltinSurfaceTypeAttr,
@@ -8147,6 +8393,9 @@ static void ProcessDeclAttribute(Sema &S, Scope *scope, Decl *D,
   case ParsedAttr::AT_SwiftAsync:
     handleSwiftAsyncAttr(S, D, AL);
     break;
+  case ParsedAttr::AT_SwiftAsyncError:
+    handleSwiftAsyncError(S, D, AL);
+    break;
 
   // XRay attributes.
   case ParsedAttr::AT_XRayLogArgs:
@@ -8196,6 +8445,14 @@ static void ProcessDeclAttribute(Sema &S, Scope *scope, Decl *D,
 
   case ParsedAttr::AT_UseHandle:
     handleHandleAttr<UseHandleAttr>(S, D, AL);
+    break;
+
+  case ParsedAttr::AT_EnforceTCB:
+    handleEnforceTCBAttr<EnforceTCBAttr, EnforceTCBLeafAttr>(S, D, AL);
+    break;
+
+  case ParsedAttr::AT_EnforceTCBLeaf:
+    handleEnforceTCBAttr<EnforceTCBLeafAttr, EnforceTCBAttr>(S, D, AL);
     break;
   }
 }

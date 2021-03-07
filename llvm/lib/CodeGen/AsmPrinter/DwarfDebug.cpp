@@ -151,6 +151,26 @@ static cl::opt<LinkageNameOption>
                                             "Abstract subprograms")),
                       cl::init(DefaultLinkageNames));
 
+static cl::opt<DwarfDebug::MinimizeAddrInV5> MinimizeAddrInV5Option(
+    "minimize-addr-in-v5", cl::Hidden,
+    cl::desc("Always use DW_AT_ranges in DWARFv5 whenever it could allow more "
+             "address pool entry sharing to reduce relocations/object size"),
+    cl::values(clEnumValN(DwarfDebug::MinimizeAddrInV5::Default, "Default",
+                          "Default address minimization strategy"),
+               clEnumValN(DwarfDebug::MinimizeAddrInV5::Ranges, "Ranges",
+                          "Use rnglists for contiguous ranges if that allows "
+                          "using a pre-existing base address"),
+               clEnumValN(DwarfDebug::MinimizeAddrInV5::Expressions,
+                          "Expressions",
+                          "Use exprloc addrx+offset expressions for any "
+                          "address with a prior base address"),
+               clEnumValN(DwarfDebug::MinimizeAddrInV5::Form, "Form",
+                          "Use addrx+offset extension form for any address "
+                          "with a prior base address"),
+               clEnumValN(DwarfDebug::MinimizeAddrInV5::Disabled, "Disabled",
+                          "Stuff")),
+    cl::init(DwarfDebug::MinimizeAddrInV5::Default));
+
 static constexpr unsigned ULEB128PadSize = 4;
 
 void DebugLocDwarfExpression::emitOp(uint8_t Op, const char *Comment) {
@@ -372,10 +392,21 @@ DwarfDebug::DwarfDebug(AsmPrinter *A)
   DwarfVersion =
       TT.isNVPTX() ? 2 : (DwarfVersion ? DwarfVersion : dwarf::DWARF_VERSION);
 
-  bool Dwarf64 = Asm->TM.Options.MCOptions.Dwarf64 &&
-                 DwarfVersion >= 3 &&   // DWARF64 was introduced in DWARFv3.
-                 TT.isArch64Bit() &&    // DWARF64 requires 64-bit relocations.
-                 TT.isOSBinFormatELF(); // Support only ELF for now.
+  bool Dwarf64 = DwarfVersion >= 3 && // DWARF64 was introduced in DWARFv3.
+                 TT.isArch64Bit();    // DWARF64 requires 64-bit relocations.
+
+  // Support DWARF64
+  // 1: For ELF when requested.
+  // 2: For XCOFF64: the AIX assembler will fill in debug section lengths
+  //    according to the DWARF64 format for 64-bit assembly, so we must use
+  //    DWARF64 in the compiler too for 64-bit mode.
+  Dwarf64 &=
+      ((Asm->TM.Options.MCOptions.Dwarf64 || MMI->getModule()->isDwarf64()) &&
+       TT.isOSBinFormatELF()) ||
+      TT.isOSBinFormatXCOFF();
+
+  if (!Dwarf64 && TT.isArch64Bit() && TT.isOSBinFormatXCOFF())
+    report_fatal_error("XCOFF requires DWARF64 for 64-bit mode!");
 
   UseRangesSection = !NoDwarfRangesSection && !TT.isNVPTX();
 
@@ -421,6 +452,17 @@ DwarfDebug::DwarfDebug(AsmPrinter *A)
     EnableOpConvert = !((tuneForGDB() && useSplitDwarf()) || (tuneForLLDB() && !TT.isOSBinFormatMachO()));
   else
     EnableOpConvert = (DwarfOpConvert == Enable);
+
+  // Split DWARF would benefit object size significantly by trading reductions
+  // in address pool usage for slightly increased range list encodings.
+  if (DwarfVersion >= 5) {
+    MinimizeAddr = MinimizeAddrInV5Option;
+    // FIXME: In the future, enable this by default for Split DWARF where the
+    // tradeoff is more pronounced due to being able to offload the range
+    // lists to the dwo file and shrink object files/reduce relocations there.
+    if (MinimizeAddr == MinimizeAddrInV5::Default)
+      MinimizeAddr = MinimizeAddrInV5::Disabled;
+  }
 
   Asm->OutStreamer->getContext().setDwarfVersion(DwarfVersion);
   Asm->OutStreamer->getContext().setDwarfFormat(Dwarf64 ? dwarf::DWARF64
@@ -1752,7 +1794,10 @@ void DwarfDebug::collectEntityInfo(DwarfCompileUnit &TheCU,
 
     // Instruction ranges, specifying where IV is accessible.
     const auto &HistoryMapEntries = I.second;
-    if (HistoryMapEntries.empty())
+
+    // Try to find any non-empty variable location. Do not create a concrete
+    // entity if there are no locations.
+    if (!DbgValues.hasNonEmptyLocation(HistoryMapEntries))
       continue;
 
     LexicalScope *Scope = nullptr;
@@ -2339,12 +2384,8 @@ void DwarfDebug::emitDebugPubSection(bool GnuStyle, StringRef Name,
     TheU = Skeleton;
 
   // Emit the header.
-  MCSymbol *BeginLabel = Asm->createTempSymbol("pub" + Name + "_begin");
-  MCSymbol *EndLabel = Asm->createTempSymbol("pub" + Name + "_end");
-  Asm->emitDwarfUnitLength(EndLabel, BeginLabel,
-                           "Length of Public " + Name + " Info");
-
-  Asm->OutStreamer->emitLabel(BeginLabel);
+  MCSymbol *EndLabel = Asm->emitDwarfUnitLength(
+      "pub" + Name, "Length of Public " + Name + " Info");
 
   Asm->OutStreamer->AddComment("DWARF Version");
   Asm->emitInt16(dwarf::DW_PUBNAMES_VERSION);
@@ -2468,9 +2509,10 @@ void DwarfDebug::emitDebugLocValue(const AsmPrinter &AP, const DIBasicType *BT,
     TargetIndexLocation Loc = Value.getTargetIndexLocation();
     // TODO TargetIndexLocation is a target-independent. Currently only the WebAssembly-specific
     // encoding is supported.
+    assert(AP.TM.getTargetTriple().isWasm());
     DwarfExpr.addWasmLocation(Loc.Index, static_cast<uint64_t>(Loc.Offset));
-      DwarfExpr.addExpression(std::move(ExprCursor));
-      return;
+    DwarfExpr.addExpression(std::move(ExprCursor));
+    return;
   } else if (Value.isConstantFP()) {
     if (AP.getDwarfVersion() >= 4 && !AP.getDwarfDebug()->tuneForSCE() &&
         !ExprCursor) {
@@ -3372,7 +3414,10 @@ dwarf::Form DwarfDebug::getDwarfSectionOffsetForm() const {
 }
 
 const MCSymbol *DwarfDebug::getSectionLabel(const MCSection *S) {
-  return SectionLabels.find(S)->second;
+  auto I = SectionLabels.find(S);
+  if (I == SectionLabels.end())
+    return nullptr;
+  return I->second;
 }
 void DwarfDebug::insertSectionLabel(const MCSymbol *S) {
   if (SectionLabels.insert(std::make_pair(&S->getSection(), S)).second)

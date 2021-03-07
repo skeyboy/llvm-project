@@ -1176,15 +1176,11 @@ QualType Sema::getCurrentThisType() {
   }
 
   if (ThisTy.isNull() && isLambdaCallOperator(CurContext) &&
-      inTemplateInstantiation()) {
-
-    assert(isa<CXXRecordDecl>(DC) &&
-           "Trying to get 'this' type from static method?");
+      inTemplateInstantiation() && isa<CXXRecordDecl>(DC)) {
 
     // This is a lambda call operator that is being instantiated as a default
     // initializer. DC must point to the enclosing class type, so we can recover
     // the 'this' type from it.
-
     QualType ClassTy = Context.getTypeDeclType(cast<CXXRecordDecl>(DC));
     // There are no cv-qualifiers for 'this' within default initializers,
     // per [expr.prim.general]p4.
@@ -1527,9 +1523,24 @@ Sema::BuildCXXTypeConstructExpr(TypeSourceInfo *TInfo,
 bool Sema::isUsualDeallocationFunction(const CXXMethodDecl *Method) {
   // [CUDA] Ignore this function, if we can't call it.
   const FunctionDecl *Caller = dyn_cast<FunctionDecl>(CurContext);
-  if (getLangOpts().CUDA &&
-      IdentifyCUDAPreference(Caller, Method) <= CFP_WrongSide)
-    return false;
+  if (getLangOpts().CUDA) {
+    auto CallPreference = IdentifyCUDAPreference(Caller, Method);
+    // If it's not callable at all, it's not the right function.
+    if (CallPreference < CFP_WrongSide)
+      return false;
+    if (CallPreference == CFP_WrongSide) {
+      // Maybe. We have to check if there are better alternatives.
+      DeclContext::lookup_result R =
+          Method->getDeclContext()->lookup(Method->getDeclName());
+      for (const auto *D : R) {
+        if (const auto *FD = dyn_cast<FunctionDecl>(D)) {
+          if (IdentifyCUDAPreference(Caller, FD) > CFP_WrongSide)
+            return false;
+        }
+      }
+      // We've found no better variants.
+    }
+  }
 
   SmallVector<const FunctionDecl*, 4> PreventedBy;
   bool Result = Method->isUsualDeallocationFunction(PreventedBy);
@@ -2447,12 +2458,27 @@ static bool resolveAllocationOverload(
     }
 
     if (Diagnose) {
-      PartialDiagnosticAt PD(R.getNameLoc(), S.PDiag(diag::err_ovl_no_viable_function_in_call)
-          << R.getLookupName() << Range);
+      // If this is an allocation of the form 'new (p) X' for some object
+      // pointer p (or an expression that will decay to such a pointer),
+      // diagnose the missing inclusion of <new>.
+      if (!R.isClassLookup() && Args.size() == 2 &&
+          (Args[1]->getType()->isObjectPointerType() ||
+           Args[1]->getType()->isArrayType())) {
+        S.Diag(R.getNameLoc(), diag::err_need_header_before_placement_new)
+            << R.getLookupName() << Range;
+        // Listing the candidates is unlikely to be useful; skip it.
+        return true;
+      }
 
-      // If we have aligned candidates, only note the align_val_t candidates
-      // from AlignedCandidates and the non-align_val_t candidates from
-      // Candidates.
+      // Finish checking all candidates before we note any. This checking can
+      // produce additional diagnostics so can't be interleaved with our
+      // emission of notes.
+      //
+      // For an aligned allocation, separately check the aligned and unaligned
+      // candidates with their respective argument lists.
+      SmallVector<OverloadCandidate*, 32> Cands;
+      SmallVector<OverloadCandidate*, 32> AlignedCands;
+      llvm::SmallVector<Expr*, 4> AlignedArgs;
       if (AlignedCandidates) {
         auto IsAligned = [](OverloadCandidate &C) {
           return C.Function->getNumParams() > 1 &&
@@ -2460,17 +2486,26 @@ static bool resolveAllocationOverload(
         };
         auto IsUnaligned = [&](OverloadCandidate &C) { return !IsAligned(C); };
 
-        // This was an overaligned allocation, so list the aligned candidates
-        // first.
-        Args.insert(Args.begin() + 1, AlignArg);
-        AlignedCandidates->NoteCandidates(PD, S, OCD_AllCandidates, Args, "",
-                                          R.getNameLoc(), IsAligned);
-        Args.erase(Args.begin() + 1);
-        Candidates.NoteCandidates(PD, S, OCD_AllCandidates, Args, "", R.getNameLoc(),
-                                  IsUnaligned);
+        AlignedArgs.reserve(Args.size() + 1);
+        AlignedArgs.push_back(Args[0]);
+        AlignedArgs.push_back(AlignArg);
+        AlignedArgs.append(Args.begin() + 1, Args.end());
+        AlignedCands = AlignedCandidates->CompleteCandidates(
+            S, OCD_AllCandidates, AlignedArgs, R.getNameLoc(), IsAligned);
+
+        Cands = Candidates.CompleteCandidates(S, OCD_AllCandidates, Args,
+                                              R.getNameLoc(), IsUnaligned);
       } else {
-        Candidates.NoteCandidates(PD, S, OCD_AllCandidates, Args);
+        Cands = Candidates.CompleteCandidates(S, OCD_AllCandidates, Args,
+                                              R.getNameLoc());
       }
+
+      S.Diag(R.getNameLoc(), diag::err_ovl_no_viable_function_in_call)
+          << R.getLookupName() << Range;
+      if (AlignedCandidates)
+        AlignedCandidates->NoteCandidates(S, AlignedArgs, AlignedCands, "",
+                                          R.getNameLoc());
+      Candidates.NoteCandidates(S, Args, Cands, "", R.getNameLoc());
     }
     return true;
 
@@ -2630,8 +2665,24 @@ bool Sema::FindAllocationFunctions(SourceLocation StartLoc, SourceRange Range,
   if (FoundDelete.isAmbiguous())
     return true; // FIXME: clean up expressions?
 
+  // Filter out any destroying operator deletes. We can't possibly call such a
+  // function in this context, because we're handling the case where the object
+  // was not successfully constructed.
+  // FIXME: This is not covered by the language rules yet.
+  {
+    LookupResult::Filter Filter = FoundDelete.makeFilter();
+    while (Filter.hasNext()) {
+      auto *FD = dyn_cast<FunctionDecl>(Filter.next()->getUnderlyingDecl());
+      if (FD && FD->isDestroyingOperatorDelete())
+        Filter.erase();
+    }
+    Filter.done();
+  }
+
   bool FoundGlobalDelete = FoundDelete.empty();
   if (FoundDelete.empty()) {
+    FoundDelete.clear(LookupOrdinaryName);
+
     if (DeleteScope == AFS_Class)
       return true;
 

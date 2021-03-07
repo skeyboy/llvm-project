@@ -3,7 +3,7 @@ add_libc_testsuite(libc_math_unittests)
 function(add_fp_unittest name)
   cmake_parse_arguments(
     "MATH_UNITTEST"
-    "NEED_MPFR" # No optional arguments
+    "NEED_MPFR" # Optional arguments
     "" # Single value arguments
     "" # Multi-value arguments
     ${ARGN}
@@ -924,18 +924,26 @@ add_fp_unittest(
     libc.utils.FPUtil.fputil
 )
 
-add_fp_unittest(
-  sqrtl_test
-  NEED_MPFR
-  SUITE
-    libc_math_unittests
-  SRCS
-    sqrtl_test.cpp
-  DEPENDS
-    libc.include.math
-    libc.src.math.sqrtl
-    libc.utils.FPUtil.fputil
-)
+# The quad precision test for sqrt against MPFR currently suffers
+# from insufficient precision in MPFR calculations leading to
+# https://hal.archives-ouvertes.fr/hal-01091186/document. We will
+# renable after fixing the precision issue.
+if(${LIBC_TARGET_MACHINE} MATCHES "x86_64")
+  add_fp_unittest(
+    sqrtl_test
+    NEED_MPFR
+    SUITE
+      libc_math_unittests
+    SRCS
+      sqrtl_test.cpp
+    DEPENDS
+      libc.include.math
+      libc.src.math.sqrtl
+      libc.utils.FPUtil.fputil
+  )
+else()
+  message(STATUS "Skipping sqrtl_test")
+endif()
 
 add_fp_unittest(
   remquof_test
@@ -1007,3 +1015,61 @@ add_fp_unittest(
     libc.src.math.hypot
     libc.utils.FPUtil.fputil
 )
+
+add_fp_unittest(
+  nextafter_test
+  SUITE
+    libc_math_unittests
+  SRCS
+    nextafter_test.cpp
+  HDRS
+    NextAfterTest.h
+  DEPENDS
+    libc.include.math
+    libc.src.math.nextafter
+    libc.utils.FPUtil.fputil
+)
+
+add_fp_unittest(
+  nextafterf_test
+  SUITE
+    libc_math_unittests
+  SRCS
+    nextafterf_test.cpp
+  HDRS
+    NextAfterTest.h
+  DEPENDS
+    libc.include.math
+    libc.src.math.nextafterf
+    libc.utils.FPUtil.fputil
+)
+
+add_fp_unittest(
+  nextafterl_test
+  SUITE
+    libc_math_unittests
+  SRCS
+    nextafterl_test.cpp
+  HDRS
+    NextAfterTest.h
+  DEPENDS
+    libc.include.math
+    libc.src.math.nextafterl
+    libc.utils.FPUtil.fputil
+)
+
+add_fp_unittest(
+  fmaf_test
+  NEED_MPFR
+  SUITE
+    libc_math_unittests
+  SRCS
+    fmaf_test.cpp
+  DEPENDS
+    libc.include.math
+    libc.src.math.fmaf
+    libc.utils.FPUtil.fputil
+)
+
+add_subdirectory(generic)
+add_subdirectory(exhaustive)

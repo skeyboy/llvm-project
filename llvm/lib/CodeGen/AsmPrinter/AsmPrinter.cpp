@@ -31,6 +31,7 @@
 #include "llvm/ADT/Twine.h"
 #include "llvm/Analysis/ConstantFolding.h"
 #include "llvm/Analysis/EHPersonalities.h"
+#include "llvm/Analysis/MemoryLocation.h"
 #include "llvm/Analysis/OptimizationRemarkEmitter.h"
 #include "llvm/BinaryFormat/COFF.h"
 #include "llvm/BinaryFormat/Dwarf.h"
@@ -708,7 +709,12 @@ void AsmPrinter::emitFunctionHeader() {
   emitConstantPool();
 
   // Print the 'header' of function.
-  MF->setSection(getObjFileLowering().SectionForGlobal(&F, TM));
+  // If basic block sections is desired and function sections is off,
+  // explicitly request a unique section for this function.
+  if (MF->front().isBeginSection() && !TM.getFunctionSections())
+    MF->setSection(getObjFileLowering().getUniqueSectionForFunction(F, TM));
+  else
+    MF->setSection(getObjFileLowering().SectionForGlobal(&F, TM));
   OutStreamer->SwitchSection(MF->getSection());
 
   if (!MAI->hasVisibilityOnlyWithLinkage())
@@ -844,13 +850,21 @@ static void emitComments(const MachineInstr &MI, raw_ostream &CommentOS) {
   if ((Size = MI.getRestoreSize(TII))) {
     CommentOS << *Size << "-byte Reload\n";
   } else if ((Size = MI.getFoldedRestoreSize(TII))) {
-    if (*Size)
-      CommentOS << *Size << "-byte Folded Reload\n";
+    if (*Size) {
+      if (*Size == unsigned(MemoryLocation::UnknownSize))
+        CommentOS << "Unknown-size Folded Reload\n";
+      else
+        CommentOS << *Size << "-byte Folded Reload\n";
+    }
   } else if ((Size = MI.getSpillSize(TII))) {
     CommentOS << *Size << "-byte Spill\n";
   } else if ((Size = MI.getFoldedSpillSize(TII))) {
-    if (*Size)
-      CommentOS << *Size << "-byte Folded Spill\n";
+    if (*Size) {
+      if (*Size == unsigned(MemoryLocation::UnknownSize))
+        CommentOS << "Unknown-size Folded Spill\n";
+      else
+        CommentOS << *Size << "-byte Folded Spill\n";
+    }
   }
 
   // Check for spill-induced copies
@@ -891,7 +905,7 @@ static void emitKill(const MachineInstr *MI, AsmPrinter &AP) {
 /// means the target will need to handle MI in EmitInstruction.
 static bool emitDebugValueComment(const MachineInstr *MI, AsmPrinter &AP) {
   // This code handles only the 4-operand target-independent form.
-  if (MI->getNumOperands() != 4)
+  if (MI->isNonListDebugValue() && MI->getNumOperands() != 4)
     return false;
 
   SmallString<128> Str;
@@ -913,13 +927,9 @@ static bool emitDebugValueComment(const MachineInstr *MI, AsmPrinter &AP) {
   const DIExpression *Expr = MI->getDebugExpression();
   if (Expr->getNumElements()) {
     OS << '[';
-    bool NeedSep = false;
+    ListSeparator LS;
     for (auto Op : Expr->expr_ops()) {
-      if (NeedSep)
-        OS << ", ";
-      else
-        NeedSep = true;
-      OS << dwarf::OperationEncodingString(Op.getOp());
+      OS << LS << dwarf::OperationEncodingString(Op.getOp());
       for (unsigned I = 0; I < Op.getNumArgs(); ++I)
         OS << ' ' << Op.getArg(I);
     }
@@ -948,6 +958,8 @@ static bool emitDebugValueComment(const MachineInstr *MI, AsmPrinter &AP) {
   } else if (MI->getDebugOperand(0).isTargetIndex()) {
     auto Op = MI->getDebugOperand(0);
     OS << "!target-index(" << Op.getIndex() << "," << Op.getOffset() << ")";
+    // NOTE: Want this comment at start of line, don't emit with AddComment.
+    AP.OutStreamer->emitRawComment(OS.str());
     return true;
   } else {
     Register Reg;
@@ -1216,6 +1228,7 @@ void AsmPrinter::emitFunctionBody() {
         emitInlineAsm(&MI);
         break;
       case TargetOpcode::DBG_VALUE:
+      case TargetOpcode::DBG_VALUE_LIST:
         if (isVerbose()) {
           if (!emitDebugValueComment(&MI, *this))
             emitInstruction(&MI);
@@ -1820,7 +1833,7 @@ bool AsmPrinter::doFinalization(Module &M) {
 
       OutStreamer->SwitchSection(
           OutContext.getELFSection(".llvm_sympart", ELF::SHT_LLVM_SYMPART, 0, 0,
-                                   "", ++UniqueID, nullptr));
+                                   "", false, ++UniqueID, nullptr));
       OutStreamer->emitBytes(GV.getPartition());
       OutStreamer->emitZeros(1);
       OutStreamer->emitValue(
@@ -1970,8 +1983,7 @@ void AsmPrinter::emitConstantPool() {
       unsigned NewOffset = alignTo(Offset, CPE.getAlign());
       OutStreamer->emitZeros(NewOffset - Offset);
 
-      Type *Ty = CPE.getType();
-      Offset = NewOffset + getDataLayout().getTypeAllocSize(Ty);
+      Offset = NewOffset + CPE.getSizeInBytes(getDataLayout());
 
       OutStreamer->emitLabel(Sym);
       if (CPE.isMachineConstantPoolEntry())
@@ -3191,6 +3203,11 @@ void AsmPrinter::emitBasicBlockStart(const MachineBasicBlock &MBB) {
     }
   }
 
+  if (MBB.isEHCatchretTarget() &&
+      MAI->getExceptionHandlingType() == ExceptionHandling::WinEH) {
+    OutStreamer->emitLabel(MBB.getEHCatchretSymbol());
+  }
+
   // With BB sections, each basic block must handle CFI information on its own
   // if it begins a section (Entry block is handled separately by
   // AsmPrinterHandler::beginFunction).
@@ -3368,13 +3385,13 @@ void AsmPrinter::emitXRayTable() {
       GroupName = F.getComdat()->getName();
     }
     InstMap = OutContext.getELFSection("xray_instr_map", ELF::SHT_PROGBITS,
-                                       Flags, 0, GroupName,
+                                       Flags, 0, GroupName, F.hasComdat(),
                                        MCSection::NonUniqueID, LinkedToSym);
 
     if (!TM.Options.XRayOmitFunctionIndex)
       FnSledIndex = OutContext.getELFSection(
           "xray_fn_idx", ELF::SHT_PROGBITS, Flags | ELF::SHF_WRITE, 0,
-          GroupName, MCSection::NonUniqueID, LinkedToSym);
+          GroupName, F.hasComdat(), MCSection::NonUniqueID, LinkedToSym);
   } else if (MF->getSubtarget().getTargetTriple().isOSBinFormatMachO()) {
     InstMap = OutContext.getMachOSection("__DATA", "xray_instr_map", 0,
                                          SectionKind::getReadOnlyWithRel());
@@ -3458,9 +3475,9 @@ void AsmPrinter::emitPatchableFunctionEntries() {
     const MCSymbolELF *LinkedToSym = nullptr;
     StringRef GroupName;
 
-    // GNU as < 2.35 did not support section flag 'o'. Use SHF_LINK_ORDER only
-    // if we are using the integrated assembler.
-    if (MAI->useIntegratedAssembler()) {
+    // GNU as < 2.35 did not support section flag 'o'. GNU ld < 2.36 did not
+    // support mixed SHF_LINK_ORDER and non-SHF_LINK_ORDER sections.
+    if (MAI->useIntegratedAssembler() || MAI->binutilsIsAtLeast(2, 36)) {
       Flags |= ELF::SHF_LINK_ORDER;
       if (F.hasComdat()) {
         Flags |= ELF::SHF_GROUP;
@@ -3470,7 +3487,7 @@ void AsmPrinter::emitPatchableFunctionEntries() {
     }
     OutStreamer->SwitchSection(OutContext.getELFSection(
         "__patchable_function_entries", ELF::SHT_PROGBITS, Flags, 0, GroupName,
-        MCSection::NonUniqueID, LinkedToSym));
+        F.hasComdat(), MCSection::NonUniqueID, LinkedToSym));
     emitAlignment(Align(PointerSize));
     OutStreamer->emitSymbolValue(CurrentPatchableFunctionEntrySym, PointerSize);
   }

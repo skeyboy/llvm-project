@@ -333,3 +333,48 @@ latch:
 exit:
   ret void
 }
+
+; Key point is that inner_latch drops out of the outer loop when
+; the inner loop is deleted, and thus the lcssa phi needs to be
+; in the inner_latch block to preserve LCSSA.  We either have to
+; insert the LCSSA phi, or not break the inner backedge.
+define void @loop_nest_lcssa() {
+; CHECK-LABEL: @loop_nest_lcssa(
+; CHECK-NEXT:  entry:
+; CHECK-NEXT:    [[TMP0:%.*]] = add i32 1, 2
+; CHECK-NEXT:    br label [[OUTER_HEADER:%.*]]
+; CHECK:       outer_header:
+; CHECK-NEXT:    br label [[INNER_HEADER:%.*]]
+; CHECK:       inner_header:
+; CHECK-NEXT:    br i1 false, label [[INNER_LATCH:%.*]], label [[OUTER_LATCH:%.*]]
+; CHECK:       inner_latch:
+; CHECK-NEXT:    [[DOTLCSSA:%.*]] = phi i32 [ [[TMP0]], [[INNER_HEADER]] ]
+; CHECK-NEXT:    br i1 false, label [[INNER_LATCH_INNER_HEADER_CRIT_EDGE:%.*]], label [[LOOPEXIT:%.*]]
+; CHECK:       inner_latch.inner_header_crit_edge:
+; CHECK-NEXT:    unreachable
+; CHECK:       outer_latch:
+; CHECK-NEXT:    br label [[OUTER_HEADER]]
+; CHECK:       loopexit:
+; CHECK-NEXT:    [[DOTLCSSA32:%.*]] = phi i32 [ [[DOTLCSSA]], [[INNER_LATCH]] ]
+; CHECK-NEXT:    unreachable
+;
+entry:
+  br label %outer_header
+
+outer_header:
+  %0 = add i32 1, 2
+  br label %inner_header
+
+inner_header:
+  br i1 false, label %inner_latch, label %outer_latch
+
+inner_latch:
+  br i1 false, label %inner_header, label %loopexit
+
+outer_latch:
+  br label %outer_header
+
+loopexit:
+  %.lcssa32 = phi i32 [ %0, %inner_latch ]
+  unreachable
+}

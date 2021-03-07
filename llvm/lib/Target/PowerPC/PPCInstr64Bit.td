@@ -987,6 +987,9 @@ def : InstAlias<"cntlzw. $rA, $rS", (CNTLZW8_rec g8rc:$rA, g8rc:$rS)>;
 def : InstAlias<"mtxer $Rx", (MTSPR8 1, g8rc:$Rx)>;
 def : InstAlias<"mfxer $Rx", (MFSPR8 g8rc:$Rx, 1)>;
 
+//Disable this alias on AIX for now because as does not support them.
+let Predicates = [ModernAs] in {
+
 def : InstAlias<"mtudscr $Rx", (MTSPR8 3, g8rc:$Rx)>;
 def : InstAlias<"mfudscr $Rx", (MFSPR8 g8rc:$Rx, 3)>;
 
@@ -1046,6 +1049,8 @@ def : InstAlias<"mfpvr $RT", (MFSPR8 g8rc:$RT, 287)>;
 
 def : InstAlias<"mfspefscr $Rx", (MFSPR8 g8rc:$Rx, 512)>;
 def : InstAlias<"mtspefscr $Rx", (MTSPR8 512, g8rc:$Rx)>;
+
+}
 
 //===----------------------------------------------------------------------===//
 // Load/Store instructions.
@@ -1612,14 +1617,20 @@ def : Pat<(int_ppc_darn32), (EXTRACT_SUBREG (DARN 0), sub_32)>;
 def : Pat<(int_ppc_darn), (DARN 1)>;
 def : Pat<(int_ppc_darnraw), (DARN 2)>;
 
+class X_RA5_RB5<bits<6> opcode, bits<10> xo, string opc, RegisterOperand ty,
+                   InstrItinClass itin, list<dag> pattern>
+  : X_L1_RS5_RS5<opcode, xo, (outs), (ins ty:$rA, ty:$rB, u1imm:$L),
+                 !strconcat(opc, " $rA, $rB"), itin, pattern>{
+   let L = 1;
+}
+
 class X_L1_RA5_RB5<bits<6> opcode, bits<10> xo, string opc, RegisterOperand ty,
                    InstrItinClass itin, list<dag> pattern>
   : X_L1_RS5_RS5<opcode, xo, (outs), (ins ty:$rA, ty:$rB, u1imm:$L),
                  !strconcat(opc, " $rA, $rB, $L"), itin, pattern>;
 
 let Interpretation64Bit = 1, isCodeGenOnly = 1 in {
-def CP_COPY8   : X_L1_RA5_RB5<31, 774, "copy"  , g8rc, IIC_LdStCOPY, []>;
-def CP_PASTE8  : X_L1_RA5_RB5<31, 902, "paste" , g8rc, IIC_LdStPASTE, []>;
+def CP_COPY8   : X_RA5_RB5<31, 774, "copy"  , g8rc, IIC_LdStCOPY, []>;
 def CP_PASTE8_rec : X_L1_RA5_RB5<31, 902, "paste.", g8rc, IIC_LdStPASTE, []>,isRecordForm;
 }
 

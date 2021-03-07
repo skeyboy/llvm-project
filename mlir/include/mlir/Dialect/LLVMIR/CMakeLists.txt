@@ -10,6 +10,8 @@ add_public_tablegen_target(MLIRLLVMOpsIncGen)
 
 add_mlir_doc(LLVMOps -gen-op-doc LLVMOps Dialects/)
 
+add_mlir_interface(LLVMOpsInterfaces)
+
 set(LLVM_TARGET_DEFINITIONS LLVMOps.td)
 mlir_tablegen(LLVMConversions.inc -gen-llvmir-conversions)
 mlir_tablegen(LLVMConversionEnumsToLLVM.inc -gen-enum-to-llvmir-conversions)
@@ -33,12 +35,6 @@ add_mlir_doc(LLVMAVX512 -gen-dialect-doc LLVMAVX512 Dialects/)
 set(LLVM_TARGET_DEFINITIONS LLVMAVX512.td)
 mlir_tablegen(LLVMAVX512Conversions.inc -gen-llvmir-conversions)
 add_public_tablegen_target(MLIRLLVMAVX512ConversionsIncGen)
-
-add_mlir_dialect(LLVMArmNeon llvm_arm_neon LLVMArmNeon)
-add_mlir_doc(LLVMArmNeon -gen-dialect-doc LLVMArmNeon Dialects/)
-set(LLVM_TARGET_DEFINITIONS LLVMArmNeon.td)
-mlir_tablegen(LLVMArmNeonConversions.inc -gen-llvmir-conversions)
-add_public_tablegen_target(MLIRLLVMArmNeonConversionsIncGen)
 
 add_mlir_dialect(LLVMArmSVE llvm_arm_sve LLVMArmSVE)
 add_mlir_doc(LLVMArmSVE -gen-dialect-doc LLVMArmSve Dialects/)

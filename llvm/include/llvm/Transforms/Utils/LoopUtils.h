@@ -27,6 +27,7 @@ class AliasSet;
 class AliasSetTracker;
 class BasicBlock;
 class BlockFrequencyInfo;
+class ICFLoopSafetyInfo;
 class IRBuilderBase;
 class Loop;
 class LoopInfo;
@@ -36,6 +37,7 @@ class MemorySSAUpdater;
 class OptimizationRemarkEmitter;
 class PredIteratorCache;
 class ScalarEvolution;
+class ScalarEvolutionExpander;
 class SCEV;
 class SCEVExpander;
 class TargetLibraryInfo;
@@ -180,8 +182,8 @@ void deleteDeadLoop(Loop *L, DominatorTree *DT, ScalarEvolution *SE,
                     LoopInfo *LI, MemorySSA *MSSA = nullptr);
 
 /// Remove the backedge of the specified loop.  Handles loop nests and general
-/// loop structures subject to the precondition that the loop has a single
-/// latch block.  Preserves all listed analyses.
+/// loop structures subject to the precondition that the loop has no parent
+/// loop and has a single latch block.  Preserves all listed analyses.
 void breakLoopBackedge(Loop *L, DominatorTree &DT, ScalarEvolution &SE,
                        LoopInfo &LI, MemorySSA *MSSA);
 
@@ -260,6 +262,9 @@ bool hasDisableAllTransformsHint(const Loop *L);
 
 /// Look for the loop attribute that disables the LICM transformation heuristics.
 bool hasDisableLICMTransformsHint(const Loop *L);
+
+/// Look for the loop attribute that requires progress within the loop.
+bool hasMustProgress(const Loop *L);
 
 /// The mode sets how eager a transformation should be applied.
 enum TransformationMode {
@@ -351,6 +356,7 @@ bool canSinkOrHoistInst(Instruction &I, AAResults *AA, DominatorTree *DT,
                         OptimizationRemarkEmitter *ORE = nullptr);
 
 /// Returns a Min/Max operation corresponding to MinMaxRecurrenceKind.
+/// The Builder's fast-math-flags must be set to propagate the expected values.
 Value *createMinMaxOp(IRBuilderBase &Builder, RecurKind RK, Value *Left,
                       Value *Right);
 
@@ -372,8 +378,7 @@ Value *getShuffleReduction(IRBuilderBase &Builder, Value *Src, unsigned Op,
 /// required to implement the reduction.
 /// Fast-math-flags are propagated using the IRBuilder's setting.
 Value *createSimpleTargetReduction(IRBuilderBase &B,
-                                   const TargetTransformInfo *TTI,
-                                   unsigned Opcode, Value *Src,
+                                   const TargetTransformInfo *TTI, Value *Src,
                                    RecurKind RdxKind,
                                    ArrayRef<Value *> RedOps = None);
 
@@ -477,7 +482,7 @@ Loop *cloneLoop(Loop *L, Loop *PL, ValueToValueMapTy &VM,
 std::pair<Instruction *, Instruction *>
 addRuntimeChecks(Instruction *Loc, Loop *TheLoop,
                  const SmallVectorImpl<RuntimePointerCheck> &PointerChecks,
-                 ScalarEvolution *SE);
+                 SCEVExpander &Expander);
 
 } // end namespace llvm
 

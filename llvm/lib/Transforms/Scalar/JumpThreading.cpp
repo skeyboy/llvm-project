@@ -341,6 +341,10 @@ bool JumpThreading::runOnFunction(Function &F) {
 
 PreservedAnalyses JumpThreadingPass::run(Function &F,
                                          FunctionAnalysisManager &AM) {
+  auto &TTI = AM.getResult<TargetIRAnalysis>(F);
+  // Jump Threading has no sense for the targets with divergent CF
+  if (TTI.hasBranchDivergence())
+    return PreservedAnalyses::all();
   auto &TLI = AM.getResult<TargetLibraryAnalysis>(F);
   auto &DT = AM.getResult<DominatorTreeAnalysis>(F);
   auto &LVI = AM.getResult<LazyValueAnalysis>(F);
@@ -429,8 +433,9 @@ bool JumpThreadingPass::runImpl(Function &F, TargetLibraryInfo *TLI_,
 
       // Jump threading may have introduced redundant debug values into BB
       // which should be removed.
+      // Remove redundant pseudo probes as well.
       if (Changed)
-        RemoveRedundantDbgInstrs(&BB);
+        RemoveRedundantDbgInstrs(&BB, true);
 
       // Stop processing BB if it's the entry or is now deleted. The following
       // routines attempt to eliminate BB and locating a suitable replacement
@@ -458,12 +463,12 @@ bool JumpThreadingPass::runImpl(Function &F, TargetLibraryInfo *TLI_,
         BasicBlock *Succ = BI->getSuccessor(0);
         if (
             // The terminator must be the only non-phi instruction in BB.
-            BB.getFirstNonPHIOrDbg()->isTerminator() &&
+            BB.getFirstNonPHIOrDbg(true)->isTerminator() &&
             // Don't alter Loop headers and latches to ensure another pass can
             // detect and transform nested loops later.
             !LoopHeaders.count(&BB) && !LoopHeaders.count(Succ) &&
             TryToSimplifyUncondBranchFromEmptyBlock(&BB, DTU)) {
-          RemoveRedundantDbgInstrs(Succ);
+          RemoveRedundantDbgInstrs(Succ, true);
           // BB is valid for cleanup here because we passed in DTU. F remains
           // BB's parent until a DTU->getDomTree() event.
           LVI->eraseBlock(&BB);
@@ -729,23 +734,26 @@ bool JumpThreadingPass::computeValueKnownInPredecessorsImpl(
 
   // Handle some boolean conditions.
   if (I->getType()->getPrimitiveSizeInBits() == 1) {
+    using namespace PatternMatch;
+
     assert(Preference == WantInteger && "One-bit non-integer type?");
     // X | true -> true
     // X & false -> false
-    if (I->getOpcode() == Instruction::Or ||
-        I->getOpcode() == Instruction::And) {
+    Value *Op0, *Op1;
+    if (match(I, m_LogicalOr(m_Value(Op0), m_Value(Op1))) ||
+        match(I, m_LogicalAnd(m_Value(Op0), m_Value(Op1)))) {
       PredValueInfoTy LHSVals, RHSVals;
 
-      computeValueKnownInPredecessorsImpl(I->getOperand(0), BB, LHSVals,
-                                      WantInteger, RecursionSet, CxtI);
-      computeValueKnownInPredecessorsImpl(I->getOperand(1), BB, RHSVals,
-                                          WantInteger, RecursionSet, CxtI);
+      computeValueKnownInPredecessorsImpl(Op0, BB, LHSVals, WantInteger,
+                                          RecursionSet, CxtI);
+      computeValueKnownInPredecessorsImpl(Op1, BB, RHSVals, WantInteger,
+                                          RecursionSet, CxtI);
 
       if (LHSVals.empty() && RHSVals.empty())
         return false;
 
       ConstantInt *InterestingVal;
-      if (I->getOpcode() == Instruction::Or)
+      if (match(I, m_LogicalOr()))
         InterestingVal = ConstantInt::getTrue(I->getContext());
       else
         InterestingVal = ConstantInt::getFalse(I->getContext());
@@ -1753,7 +1761,7 @@ bool JumpThreadingPass::processThreadableEdges(Value *Cond, BasicBlock *BB,
     // and we still want to process.
     erase_if(PredToDestList,
              [&](const std::pair<BasicBlock *, BasicBlock *> &PredToDest) {
-               return LoopHeaders.count(PredToDest.second) != 0;
+               return LoopHeaders.contains(PredToDest.second);
              });
 
     if (PredToDestList.empty())
@@ -2072,6 +2080,15 @@ JumpThreadingPass::cloneInstructions(BasicBlock::iterator BI,
     ValueMapping[PN] = NewPN;
   }
 
+  // Clone noalias scope declarations in the threaded block. When threading a
+  // loop exit, we would otherwise end up with two idential scope declarations
+  // visible at the same time.
+  SmallVector<MDNode *> NoAliasScopes;
+  DenseMap<MDNode *, MDNode *> ClonedScopes;
+  LLVMContext &Context = PredBB->getContext();
+  identifyNoAliasScopesToClone(BI, BE, NoAliasScopes);
+  cloneNoAliasScopes(NoAliasScopes, ClonedScopes, "thread", Context);
+
   // Clone the non-phi instructions of the source basic block into NewBB,
   // keeping track of the mapping and using it to remap operands in the cloned
   // instructions.
@@ -2080,6 +2097,7 @@ JumpThreadingPass::cloneInstructions(BasicBlock::iterator BI,
     New->setName(BI->getName());
     NewBB->getInstList().push_back(New);
     ValueMapping[&*BI] = New;
+    adaptNoAliasScopes(New, ClonedScopes, Context);
 
     // Remap operands to patch up intra-block references.
     for (unsigned i = 0, e = New->getNumOperands(); i != e; ++i)
@@ -2857,11 +2875,14 @@ bool JumpThreadingPass::tryToUnfoldSelectInCurrBB(BasicBlock *BB) {
       continue;
 
     auto isUnfoldCandidate = [BB](SelectInst *SI, Value *V) {
+      using namespace PatternMatch;
+
       // Check if SI is in BB and use V as condition.
       if (SI->getParent() != BB)
         return false;
       Value *Cond = SI->getCondition();
-      return (Cond && Cond == V && Cond->getType()->isIntegerTy(1));
+      bool IsAndOr = match(SI, m_CombineOr(m_LogicalAnd(), m_LogicalOr()));
+      return Cond && Cond == V && Cond->getType()->isIntegerTy(1) && !IsAndOr;
     };
 
     SelectInst *SI = nullptr;

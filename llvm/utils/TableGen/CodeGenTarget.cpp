@@ -226,7 +226,6 @@ StringRef llvm::getEnumName(MVT::SimpleValueType T) {
   case MVT::iPTR:      return "MVT::iPTR";
   case MVT::iPTRAny:   return "MVT::iPTRAny";
   case MVT::Untyped:   return "MVT::Untyped";
-  case MVT::exnref:    return "MVT::exnref";
   case MVT::funcref:   return "MVT::funcref";
   case MVT::externref: return "MVT::externref";
   default: llvm_unreachable("ILLEGAL VALUE TYPE!");
@@ -261,9 +260,7 @@ CodeGenTarget::CodeGenTarget(RecordKeeper &records)
 CodeGenTarget::~CodeGenTarget() {
 }
 
-const StringRef CodeGenTarget::getName() const {
-  return TargetRec->getName();
-}
+StringRef CodeGenTarget::getName() const { return TargetRec->getName(); }
 
 /// getInstNamespace - Find and return the target machine's instruction
 /// namespace. The namespace is cached because it is requested multiple times.
@@ -344,7 +341,8 @@ CodeGenRegBank &CodeGenTarget::getRegBank() const {
 Optional<CodeGenRegisterClass *>
 CodeGenTarget::getSuperRegForSubReg(const ValueTypeByHwMode &ValueTy,
                                     CodeGenRegBank &RegBank,
-                                    const CodeGenSubRegIndex *SubIdx) const {
+                                    const CodeGenSubRegIndex *SubIdx,
+                                    bool MustBeAllocatable) const {
   std::vector<CodeGenRegisterClass *> Candidates;
   auto &RegClasses = RegBank.getRegClasses();
 
@@ -358,6 +356,10 @@ CodeGenTarget::getSuperRegForSubReg(const ValueTypeByHwMode &ValueTy,
 
     // We have a class. Check if it supports this value type.
     if (!llvm::is_contained(SubClassWithSubReg->VTs, ValueTy))
+      continue;
+
+    // If necessary, check that it is allocatable.
+    if (MustBeAllocatable && !SubClassWithSubReg->Allocatable)
       continue;
 
     // We have a register class which supports both the value type and
@@ -654,6 +656,7 @@ CodeGenIntrinsic::CodeGenIntrinsic(Record *R,
   isWillReturn = false;
   isCold = false;
   isNoDuplicate = false;
+  isNoMerge = false;
   isConvergent = false;
   isSpeculatable = false;
   hasSideEffects = false;
@@ -843,6 +846,8 @@ void CodeGenIntrinsic::setProperty(Record *R) {
     canThrow = true;
   else if (R->getName() == "IntrNoDuplicate")
     isNoDuplicate = true;
+  else if (R->getName() == "IntrNoMerge")
+    isNoMerge = true;
   else if (R->getName() == "IntrConvergent")
     isConvergent = true;
   else if (R->getName() == "IntrNoReturn")

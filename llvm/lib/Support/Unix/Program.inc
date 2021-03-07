@@ -181,17 +181,21 @@ toNullTerminatedCStringArray(ArrayRef<StringRef> Strings, StringSaver &Saver) {
 static bool Execute(ProcessInfo &PI, StringRef Program,
                     ArrayRef<StringRef> Args, Optional<ArrayRef<StringRef>> Env,
                     ArrayRef<Optional<StringRef>> Redirects,
-                    unsigned MemoryLimit, std::string *ErrMsg) {
-  if (!llvm::sys::fs::exists(Program) 
+                    unsigned MemoryLimit, std::string *ErrMsg,
+                    BitVector *AffinityMask) {
+  if (!llvm::sys::fs::exists(Program)
 #if (TARGET_OS_IPHONE || TARGET_IPHONE_SIMULATOR)
        && !ios_executable(Program.str().c_str())  // one of the commands in ios_system
 #endif
-  ) {
+    ) {
     if (ErrMsg)
       *ErrMsg = std::string("Executable \"") + Program.str() +
                 std::string("\" doesn't exist!");
     return false;
   }
+
+  assert(!AffinityMask && "Starting a process with an affinity mask is "
+                          "currently not supported on Unix!");
 
   BumpPtrAllocator Allocator;
   StringSaver Saver(Allocator);
@@ -474,7 +478,10 @@ ProcessInfo llvm::sys::Wait(const ProcessInfo &PI, unsigned SecondsToWait,
   if (ProcStat) {
     std::chrono::microseconds UserT = toDuration(Info.ru_utime);
     std::chrono::microseconds KernelT = toDuration(Info.ru_stime);
-    uint64_t PeakMemory = static_cast<uint64_t>(Info.ru_maxrss);
+    uint64_t PeakMemory = 0;
+#ifndef __HAIKU__
+    PeakMemory = static_cast<uint64_t>(Info.ru_maxrss);
+#endif
     *ProcStat = ProcessStatistics{UserT + KernelT, UserT, PeakMemory};
   }
 #endif // (TARGET_OS_IPHONE || TARGET_IPHONE_SIMULATOR)

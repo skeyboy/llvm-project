@@ -65,11 +65,11 @@ static unsigned getBitWidth(Type type) {
 }
 
 /// Returns the bit width of LLVMType integer or vector.
-static unsigned getLLVMTypeBitWidth(LLVM::LLVMType type) {
-  auto vectorType = type.dyn_cast<LLVM::LLVMVectorType>();
-  return (vectorType ? vectorType.getElementType() : type)
-      .cast<LLVM::LLVMIntegerType>()
-      .getBitWidth();
+static unsigned getLLVMTypeBitWidth(Type type) {
+  return (LLVM::isCompatibleVectorType(type) ? LLVM::getVectorElementType(type)
+                                             : type)
+      .cast<IntegerType>()
+      .getWidth();
 }
 
 /// Creates `IntegerAttribute` with all bits set for given type
@@ -115,16 +115,15 @@ static Value createFPConstant(Location loc, Type srcType, Type dstType,
 ///   - `BitFieldSExtract`
 ///   - `BitFieldUExtract`
 /// Truncates or extends the value. If the bitwidth of the value is the same as
-/// `dstType` bitwidth, the value remains unchanged.
-static Value optionallyTruncateOrExtend(Location loc, Value value, Type dstType,
+/// `llvmType` bitwidth, the value remains unchanged.
+static Value optionallyTruncateOrExtend(Location loc, Value value,
+                                        Type llvmType,
                                         PatternRewriter &rewriter) {
   auto srcType = value.getType();
-  auto llvmType = dstType.cast<LLVM::LLVMType>();
   unsigned targetBitWidth = getLLVMTypeBitWidth(llvmType);
-  unsigned valueBitWidth =
-      srcType.isa<LLVM::LLVMType>()
-          ? getLLVMTypeBitWidth(srcType.cast<LLVM::LLVMType>())
-          : getBitWidth(srcType);
+  unsigned valueBitWidth = LLVM::isCompatibleType(srcType)
+                               ? getLLVMTypeBitWidth(srcType)
+                               : getBitWidth(srcType);
 
   if (valueBitWidth < targetBitWidth)
     return rewriter.create<LLVM::ZExtOp>(loc, llvmType, value);
@@ -193,7 +192,7 @@ convertStructTypeWithOffset(spirv::StructType type,
 
   auto elementsVector = llvm::to_vector<8>(
       llvm::map_range(type.getElementTypes(), [&](Type elementType) {
-        return converter.convertType(elementType).cast<LLVM::LLVMType>();
+        return converter.convertType(elementType);
       }));
   return LLVM::LLVMStructType::getLiteral(type.getContext(), elementsVector,
                                           /*isPacked=*/false);
@@ -204,7 +203,7 @@ static Type convertStructTypePacked(spirv::StructType type,
                                     LLVMTypeConverter &converter) {
   auto elementsVector = llvm::to_vector<8>(
       llvm::map_range(type.getElementTypes(), [&](Type elementType) {
-        return converter.convertType(elementType).cast<LLVM::LLVMType>();
+        return converter.convertType(elementType);
       }));
   return LLVM::LLVMStructType::getLiteral(type.getContext(), elementsVector,
                                           /*isPacked=*/true);
@@ -214,7 +213,7 @@ static Type convertStructTypePacked(spirv::StructType type,
 static Value createI32ConstantOf(Location loc, PatternRewriter &rewriter,
                                  unsigned value) {
   return rewriter.create<LLVM::ConstantOp>(
-      loc, LLVM::LLVMIntegerType::get(rewriter.getContext(), 32),
+      loc, IntegerType::get(rewriter.getContext(), 32),
       rewriter.getIntegerAttr(rewriter.getI32Type(), value));
 }
 
@@ -255,8 +254,7 @@ static Optional<Type> convertArrayType(spirv::ArrayType type,
       !(sizeInBytes.hasValue() && sizeInBytes.getValue() == stride))
     return llvm::None;
 
-  auto llvmElementType =
-      converter.convertType(elementType).cast<LLVM::LLVMType>();
+  auto llvmElementType = converter.convertType(elementType);
   unsigned numElements = type.getNumElements();
   return LLVM::LLVMArrayType::get(llvmElementType, numElements);
 }
@@ -265,8 +263,7 @@ static Optional<Type> convertArrayType(spirv::ArrayType type,
 /// modelled at the moment.
 static Type convertPointerType(spirv::PointerType type,
                                TypeConverter &converter) {
-  auto pointeeType =
-      converter.convertType(type.getPointeeType()).cast<LLVM::LLVMType>();
+  auto pointeeType = converter.convertType(type.getPointeeType());
   return LLVM::LLVMPointerType::get(pointeeType);
 }
 
@@ -277,8 +274,7 @@ static Optional<Type> convertRuntimeArrayType(spirv::RuntimeArrayType type,
                                               TypeConverter &converter) {
   if (type.getArrayStride() != 0)
     return llvm::None;
-  auto elementType =
-      converter.convertType(type.getElementType()).cast<LLVM::LLVMType>();
+  auto elementType = converter.convertType(type.getElementType());
   return LLVM::LLVMArrayType::get(elementType, 0);
 }
 
@@ -336,8 +332,7 @@ public:
     auto dstType = typeConverter.convertType(op.pointer().getType());
     if (!dstType)
       return failure();
-    rewriter.replaceOpWithNewOp<LLVM::AddressOfOp>(
-        op, dstType.cast<LLVM::LLVMType>(), op.variable());
+    rewriter.replaceOpWithNewOp<LLVM::AddressOfOp>(op, dstType, op.variable());
     return success();
   }
 };
@@ -425,7 +420,7 @@ public:
       return success();
     }
     rewriter.replaceOpWithNewOp<LLVM::ConstantOp>(constOp, dstType, operands,
-                                                  constOp.getAttrs());
+                                                  constOp->getAttrs());
     return success();
   }
 };
@@ -630,7 +625,7 @@ public:
     if (!dstType)
       return failure();
     rewriter.template replaceOpWithNewOp<LLVMOp>(operation, dstType, operands,
-                                                 operation.getAttrs());
+                                                 operation->getAttrs());
     return success();
   }
 };
@@ -666,8 +661,8 @@ public:
     //   int32_t executionMode;
     //   int32_t values[];          // optional values
     // };
-    auto llvmI32Type = LLVM::LLVMIntegerType::get(context, 32);
-    SmallVector<LLVM::LLVMType, 2> fields;
+    auto llvmI32Type = IntegerType::get(context, 32);
+    SmallVector<Type, 2> fields;
     fields.push_back(llvmI32Type);
     ArrayAttr values = op.values();
     if (!values.empty()) {
@@ -692,8 +687,8 @@ public:
         rewriter.create<LLVM::ConstantOp>(loc, llvmI32Type, executionModeAttr);
     structValue = rewriter.create<LLVM::InsertValueOp>(
         loc, structType, structValue, executionMode,
-        ArrayAttr::get({rewriter.getIntegerAttr(rewriter.getI32Type(), 0)},
-                       context));
+        ArrayAttr::get(context,
+                       {rewriter.getIntegerAttr(rewriter.getI32Type(), 0)}));
 
     // Insert extra operands if they exist into execution mode info struct.
     for (unsigned i = 0, e = values.size(); i < e; ++i) {
@@ -701,9 +696,9 @@ public:
       Value entry = rewriter.create<LLVM::ConstantOp>(loc, llvmI32Type, attr);
       structValue = rewriter.create<LLVM::InsertValueOp>(
           loc, structType, structValue, entry,
-          ArrayAttr::get({rewriter.getIntegerAttr(rewriter.getI32Type(), 1),
-                          rewriter.getIntegerAttr(rewriter.getI32Type(), i)},
-                         context));
+          ArrayAttr::get(context,
+                         {rewriter.getIntegerAttr(rewriter.getI32Type(), 1),
+                          rewriter.getIntegerAttr(rewriter.getI32Type(), i)}));
     }
     rewriter.create<LLVM::ReturnOp>(loc, ArrayRef<Value>({structValue}));
     rewriter.eraseOp(op);
@@ -711,7 +706,7 @@ public:
   }
 };
 
-/// Converts `spv.globalVariable` to `llvm.mlir.global`. Note that SPIR-V global
+/// Converts `spv.GlobalVariable` to `llvm.mlir.global`. Note that SPIR-V global
 /// returns a pointer, whereas in LLVM dialect the global holds an actual value.
 /// This difference is handled by `spv.mlir.addressof` and
 /// `llvm.mlir.addressof`ops that both return a pointer.
@@ -757,8 +752,7 @@ public:
                        ? LLVM::Linkage::Private
                        : LLVM::Linkage::External;
     rewriter.replaceOpWithNewOp<LLVM::GlobalOp>(
-        op, dstType.cast<LLVM::LLVMType>(), isConstant, linkage, op.sym_name(),
-        Attribute());
+        op, dstType, isConstant, linkage, op.sym_name(), Attribute());
     return success();
   }
 };
@@ -805,14 +799,14 @@ public:
                   ConversionPatternRewriter &rewriter) const override {
     if (callOp.getNumResults() == 0) {
       rewriter.replaceOpWithNewOp<LLVM::CallOp>(callOp, llvm::None, operands,
-                                                callOp.getAttrs());
+                                                callOp->getAttrs());
       return success();
     }
 
     // Function returns a single result.
     auto dstType = typeConverter.convertType(callOp.getType(0));
     rewriter.replaceOpWithNewOp<LLVM::CallOp>(callOp, dstType, operands,
-                                              callOp.getAttrs());
+                                              callOp->getAttrs());
     return success();
   }
 };
@@ -834,7 +828,8 @@ public:
     rewriter.template replaceOpWithNewOp<LLVM::FCmpOp>(
         operation, dstType,
         rewriter.getI64IntegerAttr(static_cast<int64_t>(predicate)),
-        operation.operand1(), operation.operand2());
+        operation.operand1(), operation.operand2(),
+        LLVM::FMFAttr::get({}, operation.getContext()));
     return success();
   }
 };
@@ -893,9 +888,9 @@ public:
                   ConversionPatternRewriter &rewriter) const override {
 
     if (!op.memory_access().hasValue()) {
-      replaceWithLoadOrStore(op, rewriter, this->typeConverter, /*alignment=*/0,
-                             /*isVolatile=*/false, /*isNonTemporal=*/false);
-      return success();
+      return replaceWithLoadOrStore(
+          op, rewriter, this->typeConverter, /*alignment=*/0,
+          /*isVolatile=*/false, /*isNonTemporal=*/false);
     }
     auto memoryAccess = op.memory_access().getValue();
     switch (memoryAccess) {
@@ -907,9 +902,8 @@ public:
           memoryAccess == spirv::MemoryAccess::Aligned ? *op.alignment() : 0;
       bool isNonTemporal = memoryAccess == spirv::MemoryAccess::Nontemporal;
       bool isVolatile = memoryAccess == spirv::MemoryAccess::Volatile;
-      replaceWithLoadOrStore(op, rewriter, this->typeConverter, alignment,
-                             isVolatile, isNonTemporal);
-      return success();
+      return replaceWithLoadOrStore(op, rewriter, this->typeConverter,
+                                    alignment, isVolatile, isNonTemporal);
     }
     default:
       // There is no support of other memory access attributes.
@@ -987,12 +981,12 @@ public:
   }
 };
 
-/// Converts `spv.loop` to LLVM dialect. All blocks within selection should be
-/// reachable for conversion to succeed.
-/// The structure of the loop in LLVM dialect will be the following:
+/// Converts `spv.mlir.loop` to LLVM dialect. All blocks within selection should
+/// be reachable for conversion to succeed. The structure of the loop in LLVM
+/// dialect will be the following:
 ///
 ///      +------------------------------------+
-///      | <code before spv.loop>             |
+///      | <code before spv.mlir.loop>        |
 ///      | llvm.br ^header                    |
 ///      +------------------------------------+
 ///                           |
@@ -1032,7 +1026,7 @@ public:
 ///                        V
 ///      +------------------------------------+
 ///      | ^remaining:                        |
-///      |   <code after spv.loop>            |
+///      |   <code after spv.mlir.loop>       |
 ///      +------------------------------------+
 ///
 class LoopPattern : public SPIRVToLLVMConversion<spirv::LoopOp> {
@@ -1048,8 +1042,8 @@ public:
 
     Location loc = loopOp.getLoc();
 
-    // Split the current block after `spv.loop`. The remaining ops will be used
-    // in `endBlock`.
+    // Split the current block after `spv.mlir.loop`. The remaining ops will be
+    // used in `endBlock`.
     Block *currentBlock = rewriter.getBlock();
     auto position = Block::iterator(loopOp);
     Block *endBlock = rewriter.splitBlock(currentBlock, position);
@@ -1079,8 +1073,9 @@ public:
   }
 };
 
-/// Converts `spv.selection` with `spv.BranchConditional` in its header block.
-/// All blocks within selection should be reachable for conversion to succeed.
+/// Converts `spv.mlir.selection` with `spv.BranchConditional` in its header
+/// block. All blocks within selection should be reachable for conversion to
+/// succeed.
 class SelectionPattern : public SPIRVToLLVMConversion<spirv::SelectionOp> {
 public:
   using SPIRVToLLVMConversion<spirv::SelectionOp>::SPIRVToLLVMConversion;
@@ -1094,9 +1089,9 @@ public:
     if (op.selection_control() != spirv::SelectionControl::None)
       return failure();
 
-    // `spv.selection` should have at least two blocks: one selection header
-    // block and one merge block. If no blocks are present, or control flow
-    // branches straight to merge block (two blocks are present), the op is
+    // `spv.mlir.selection` should have at least two blocks: one selection
+    // header block and one merge block. If no blocks are present, or control
+    // flow branches straight to merge block (two blocks are present), the op is
     // redundant and it is erased.
     if (op.body().getBlocks().size() <= 2) {
       rewriter.eraseOp(op);
@@ -1105,8 +1100,8 @@ public:
 
     Location loc = op.getLoc();
 
-    // Split the current block after `spv.selection`. The remaining ops will be
-    // used in `continueBlock`.
+    // Split the current block after `spv.mlir.selection`. The remaining ops
+    // will be used in `continueBlock`.
     auto *currentBlock = rewriter.getInsertionBlock();
     rewriter.setInsertionPointAfter(op);
     auto position = rewriter.getInsertionPoint();
@@ -1303,17 +1298,17 @@ public:
     switch (funcOp.function_control()) {
 #define DISPATCH(functionControl, llvmAttr)                                    \
   case functionControl:                                                        \
-    newFuncOp->setAttr("passthrough", ArrayAttr::get({llvmAttr}, context));    \
+    newFuncOp->setAttr("passthrough", ArrayAttr::get(context, {llvmAttr}));    \
     break;
 
       DISPATCH(spirv::FunctionControl::Inline,
-               StringAttr::get("alwaysinline", context));
+               StringAttr::get(context, "alwaysinline"));
       DISPATCH(spirv::FunctionControl::DontInline,
-               StringAttr::get("noinline", context));
+               StringAttr::get(context, "noinline"));
       DISPATCH(spirv::FunctionControl::Pure,
-               StringAttr::get("readonly", context));
+               StringAttr::get(context, "readonly"));
       DISPATCH(spirv::FunctionControl::Const,
-               StringAttr::get("readnone", context));
+               StringAttr::get(context, "readnone"));
 
 #undef DISPATCH
 
@@ -1553,8 +1548,8 @@ void mlir::encodeBindAttribute(ModuleOp module) {
         if (failed(SymbolTable::replaceAllSymbolUses(op, name, spvModule)))
           op.emitError("unable to replace all symbol uses for ") << name;
         SymbolTable::setSymbolName(op, name);
-        op.removeAttr(kDescriptorSet);
-        op.removeAttr(kBinding);
+        op->removeAttr(kDescriptorSet);
+        op->removeAttr(kBinding);
       }
     });
   }

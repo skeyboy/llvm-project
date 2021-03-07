@@ -240,9 +240,8 @@ class GenericDINode : public DINode {
                                 StorageType Storage, bool ShouldCreate = true);
 
   TempGenericDINode cloneImpl() const {
-    return getTemporary(
-        getContext(), getTag(), getHeader(),
-        SmallVector<Metadata *, 4>(dwarf_op_begin(), dwarf_op_end()));
+    return getTemporary(getContext(), getTag(), getHeader(),
+                        SmallVector<Metadata *, 4>(dwarf_operands()));
   }
 
 public:
@@ -1644,8 +1643,8 @@ public:
   /// written explicitly by the user (e.g. cleanup stuff in C++ put on a closing
   /// bracket). It's useful for code coverage to not show a counter on "empty"
   /// lines.
-  bool isImplicitCode() const { return ImplicitCode; }
-  void setImplicitCode(bool ImplicitCode) { this->ImplicitCode = ImplicitCode; }
+  bool isImplicitCode() const { return SubclassData1; }
+  void setImplicitCode(bool ImplicitCode) { SubclassData1 = ImplicitCode; }
 
   DIFile *getFile() const { return getScope()->getFile(); }
   StringRef getFilename() const { return getScope()->getFilename(); }
@@ -1952,6 +1951,7 @@ public:
   unsigned getVirtualIndex() const { return VirtualIndex; }
   int getThisAdjustment() const { return ThisAdjustment; }
   unsigned getScopeLine() const { return ScopeLine; }
+  void setScopeLine(unsigned L) { assert(isDistinct()); ScopeLine = L; }
   DIFlags getFlags() const { return Flags; }
   DISPFlags getSPFlags() const { return SPFlags; }
   bool isLocalToUnit() const { return getSPFlags() & SPFlagLocalToUnit; }
@@ -2051,6 +2051,10 @@ public:
   }
   Metadata *getRawThrownTypes() const {
     return getNumOperands() > 10 ? getOperandAs<Metadata>(10) : nullptr;
+  }
+
+  void replaceRawLinkageName(MDString *LinkageName) {
+    replaceOperandWith(3, LinkageName);
   }
 
   /// Check if this subprogram describes the given function.
@@ -2172,11 +2176,6 @@ public:
                     (Scope, File, Discriminator))
 
   TempDILexicalBlockFile clone() const { return cloneImpl(); }
-
-  // TODO: Remove these once they're gone from DILexicalBlockBase.
-  unsigned getLine() const = delete;
-  unsigned getColumn() const = delete;
-
   unsigned getDiscriminator() const { return Discriminator; }
 
   static bool classof(const Metadata *MD) {
@@ -2772,6 +2771,14 @@ public:
   static DIExpression *appendToStack(const DIExpression *Expr,
                                      ArrayRef<uint64_t> Ops);
 
+  /// Create a copy of \p Expr by appending the given list of \p Ops to each
+  /// instance of the operand `DW_OP_LLVM_arg, \p ArgNo`. This is used to
+  /// modify a specific location used by \p Expr, such as when salvaging that
+  /// location.
+  static DIExpression *appendOpsToArg(const DIExpression *Expr,
+                                      ArrayRef<uint64_t> Ops, unsigned ArgNo,
+                                      bool StackValue = false);
+
   /// Create a DIExpression to describe one part of an aggregate variable that
   /// is fragmented across multiple Values. The DW_OP_LLVM_fragment operation
   /// will be appended to the elements of \c Expr. If \c Expr already contains
@@ -3231,12 +3238,6 @@ public:
     return "";
   }
 
-  Optional<StringRef> getSource() const {
-    if (auto *F = getFile())
-      return F->getSource();
-    return None;
-  }
-
   MDString *getRawName() const { return getOperandAs<MDString>(0); }
   Metadata *getRawFile() const { return getOperand(1); }
   MDString *getRawGetterName() const { return getOperandAs<MDString>(2); }
@@ -3509,6 +3510,52 @@ public:
   }
 };
 
+/// List of ValueAsMetadata, to be used as an argument to a dbg.value
+/// intrinsic.
+class DIArgList : public MDNode {
+  friend class LLVMContextImpl;
+  friend class MDNode;
+  using iterator = SmallVectorImpl<ValueAsMetadata *>::iterator;
+
+  SmallVector<ValueAsMetadata *, 4> Args;
+
+  DIArgList(LLVMContext &C, StorageType Storage,
+            ArrayRef<ValueAsMetadata *> Args)
+      : MDNode(C, DIArgListKind, Storage, None),
+        Args(Args.begin(), Args.end()) {
+    track();
+  }
+  ~DIArgList() { untrack(); }
+
+  static DIArgList *getImpl(LLVMContext &Context,
+                            ArrayRef<ValueAsMetadata *> Args,
+                            StorageType Storage, bool ShouldCreate = true);
+
+  TempDIArgList cloneImpl() const {
+    return getTemporary(getContext(), getArgs());
+  }
+
+  void track();
+  void untrack();
+  void dropAllReferences();
+
+public:
+  DEFINE_MDNODE_GET(DIArgList, (ArrayRef<ValueAsMetadata *> Args), (Args))
+
+  TempDIArgList clone() const { return cloneImpl(); }
+
+  ArrayRef<ValueAsMetadata *> getArgs() const { return Args; }
+
+  iterator args_begin() { return Args.begin(); }
+  iterator args_end() { return Args.end(); }
+
+  static bool classof(const Metadata *MD) {
+    return MD->getMetadataID() == DIArgListKind;
+  }
+
+  void handleChangedOperand(void *Ref, Metadata *New);
+};
+
 /// Identifies a unique instance of a variable.
 ///
 /// Storage for identifying a potentially inlined instance of a variable,
@@ -3543,10 +3590,10 @@ public:
         InlinedAt(InlinedAt) {}
 
   const DILocalVariable *getVariable() const { return Variable; }
-  const Optional<FragmentInfo> getFragment() const { return Fragment; }
+  Optional<FragmentInfo> getFragment() const { return Fragment; }
   const DILocation *getInlinedAt() const { return InlinedAt; }
 
-  const FragmentInfo getFragmentOrDefault() const {
+  FragmentInfo getFragmentOrDefault() const {
     return Fragment.getValueOr(DefaultFragment);
   }
 

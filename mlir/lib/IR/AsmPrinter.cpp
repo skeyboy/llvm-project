@@ -48,7 +48,39 @@ void OperationName::dump() const { print(llvm::errs()); }
 
 DialectAsmPrinter::~DialectAsmPrinter() {}
 
+//===--------------------------------------------------------------------===//
+// OpAsmPrinter
+//===--------------------------------------------------------------------===//
+
 OpAsmPrinter::~OpAsmPrinter() {}
+
+void OpAsmPrinter::printFunctionalType(Operation *op) {
+  auto &os = getStream();
+  os << '(';
+  llvm::interleaveComma(op->getOperands(), os, [&](Value operand) {
+    // Print the types of null values as <<NULL TYPE>>.
+    *this << (operand ? operand.getType() : Type());
+  });
+  os << ") -> ";
+
+  // Print the result list.  We don't parenthesize single result types unless
+  // it is a function (avoiding a grammar ambiguity).
+  bool wrapped = op->getNumResults() != 1;
+  if (!wrapped && op->getResult(0).getType() &&
+      op->getResult(0).getType().isa<FunctionType>())
+    wrapped = true;
+
+  if (wrapped)
+    os << '(';
+
+  llvm::interleaveComma(op->getResults(), os, [&](const OpResult &result) {
+    // Print the types of null values as <<NULL TYPE>>.
+    *this << (result ? result.getType() : Type());
+  });
+
+  if (wrapped)
+    os << ')';
+}
 
 //===--------------------------------------------------------------------===//
 // Operation OpAsm interface.
@@ -346,7 +378,7 @@ public:
 private:
   /// Print the given operation in the generic form.
   void printGenericOp(Operation *op) override {
-    // Consider nested opertions for aliases.
+    // Consider nested operations for aliases.
     if (op->getNumRegions() != 0) {
       for (Region &region : op->getRegions())
         printRegion(region, /*printEntryBlockArgs=*/true,
@@ -409,13 +441,18 @@ private:
   /// 'elidedAttrs'.
   void printOptionalAttrDict(ArrayRef<NamedAttribute> attrs,
                              ArrayRef<StringRef> elidedAttrs = {}) override {
-    // Filter out any attributes that shouldn't be included.
-    SmallVector<NamedAttribute, 8> filteredAttrs(
-        llvm::make_filter_range(attrs, [&](NamedAttribute attr) {
-          return !llvm::is_contained(elidedAttrs, attr.first.strref());
-        }));
-    for (const NamedAttribute &attr : filteredAttrs)
-      printAttribute(attr.second);
+    if (attrs.empty())
+      return;
+    if (elidedAttrs.empty()) {
+      for (const NamedAttribute &attr : attrs)
+        printAttribute(attr.second);
+      return;
+    }
+    llvm::SmallDenseSet<StringRef> elidedAttrsSet(elidedAttrs.begin(),
+                                                  elidedAttrs.end());
+    for (const NamedAttribute &attr : attrs)
+      if (!elidedAttrsSet.contains(attr.first.strref()))
+        printAttribute(attr.second);
   }
   void printOptionalAttrDictWithKeyword(
       ArrayRef<NamedAttribute> attrs,
@@ -579,7 +616,7 @@ void AliasInitializer::visit(Type type) {
   if (succeeded(generateAlias(type, aliasToType)))
     return;
 
-  // Visit several subtypes that contain types or atttributes.
+  // Visit several subtypes that contain types or attributes.
   if (auto funcType = type.dyn_cast<FunctionType>()) {
     // Visit input and result types for functions.
     for (auto input : funcType.getInputs())
@@ -601,10 +638,10 @@ LogicalResult AliasInitializer::generateAlias(
     T symbol, llvm::MapVector<StringRef, std::vector<T>> &aliasToSymbol) {
   SmallString<16> tempBuffer;
   for (const auto &interface : interfaces) {
-    interface.getAlias(symbol, aliasOS);
-    StringRef name = aliasOS.str();
-    if (name.empty())
+    if (failed(interface.getAlias(symbol, aliasOS)))
       continue;
+    StringRef name = aliasOS.str();
+    assert(!name.empty() && "expected valid alias name");
     name = sanitizeIdentifier(name, tempBuffer, /*allowedPunctChars=*/"$_-",
                               /*allowTrailingDigit=*/false);
     name = name.copy(aliasAllocator);
@@ -699,7 +736,7 @@ void AliasState::printAliases(raw_ostream &os, NewLineCounter &newLine,
   }
   for (const auto &it : llvm::make_filter_range(typeToAlias, filterFn)) {
     it.second.print(os << '!');
-    os << " = " << it.first << newLine;
+    os << " = type " << it.first << newLine;
   }
 }
 
@@ -846,7 +883,7 @@ void SSANameState::shadowRegionArgs(Region &region, ValueRange namesToUse) {
   assert(!region.empty() && "cannot shadow arguments of an empty region");
   assert(region.getNumArguments() == namesToUse.size() &&
          "incorrect number of names passed in");
-  assert(region.getParentOp()->isKnownIsolatedFromAbove() &&
+  assert(region.getParentOp()->hasTrait<OpTrait::IsIsolatedFromAbove>() &&
          "only KnownIsolatedFromAbove ops can shadow names");
 
   SmallVector<char, 16> nameStr;
@@ -1225,12 +1262,19 @@ void ModulePrinter::printLocationInternal(LocationAttr loc, bool pretty) {
           os << "unknown";
       })
       .Case<FileLineColLoc>([&](FileLineColLoc loc) {
-        StringRef mayQuote = pretty ? "" : "\"";
-        os << mayQuote << loc.getFilename() << mayQuote << ':' << loc.getLine()
-           << ':' << loc.getColumn();
+        if (pretty) {
+          os << loc.getFilename();
+        } else {
+          os << "\"";
+          printEscapedString(loc.getFilename(), os);
+          os << "\"";
+        }
+        os << ':' << loc.getLine() << ':' << loc.getColumn();
       })
       .Case<NameLoc>([&](NameLoc loc) {
-        os << '\"' << loc.getName() << '\"';
+        os << '\"';
+        printEscapedString(loc.getName(), os);
+        os << '\"';
 
         // Print the child if it isn't unknown.
         auto childLoc = loc.getChildLoc();
@@ -1784,6 +1828,8 @@ void ModulePrinter::printType(Type type) {
       .Case<Float16Type>([&](Type) { os << "f16"; })
       .Case<Float32Type>([&](Type) { os << "f32"; })
       .Case<Float64Type>([&](Type) { os << "f64"; })
+      .Case<Float80Type>([&](Type) { os << "f80"; })
+      .Case<Float128Type>([&](Type) { os << "f128"; })
       .Case<IntegerType>([&](IntegerType integerTy) {
         if (integerTy.isSigned())
           os << 's';
@@ -1841,16 +1887,16 @@ void ModulePrinter::printType(Type type) {
           printAttribute(AffineMapAttr::get(map));
         }
         // Only print the memory space if it is the non-default one.
-        if (memrefTy.getMemorySpace())
-          os << ", " << memrefTy.getMemorySpace();
+        if (memrefTy.getMemorySpaceAsInt())
+          os << ", " << memrefTy.getMemorySpaceAsInt();
         os << '>';
       })
       .Case<UnrankedMemRefType>([&](UnrankedMemRefType memrefTy) {
         os << "memref<*x";
         printType(memrefTy.getElementType());
         // Only print the memory space if it is the non-default one.
-        if (memrefTy.getMemorySpace())
-          os << ", " << memrefTy.getMemorySpace();
+        if (memrefTy.getMemorySpaceAsInt())
+          os << ", " << memrefTy.getMemorySpaceAsInt();
         os << '>';
       })
       .Case<ComplexType>([&](ComplexType complexTy) {
@@ -1875,25 +1921,31 @@ void ModulePrinter::printOptionalAttrDict(ArrayRef<NamedAttribute> attrs,
   if (attrs.empty())
     return;
 
-  // Filter out any attributes that shouldn't be included.
-  SmallVector<NamedAttribute, 8> filteredAttrs(
-      llvm::make_filter_range(attrs, [&](NamedAttribute attr) {
-        return !llvm::is_contained(elidedAttrs, attr.first.strref());
-      }));
+  // Functor used to print a filtered attribute list.
+  auto printFilteredAttributesFn = [&](auto filteredAttrs) {
+    // Print the 'attributes' keyword if necessary.
+    if (withKeyword)
+      os << " attributes";
 
-  // If there are no attributes left to print after filtering, then we're done.
-  if (filteredAttrs.empty())
-    return;
+    // Otherwise, print them all out in braces.
+    os << " {";
+    interleaveComma(filteredAttrs,
+                    [&](NamedAttribute attr) { printNamedAttribute(attr); });
+    os << '}';
+  };
 
-  // Print the 'attributes' keyword if necessary.
-  if (withKeyword)
-    os << " attributes";
+  // If no attributes are elided, we can directly print with no filtering.
+  if (elidedAttrs.empty())
+    return printFilteredAttributesFn(attrs);
 
-  // Otherwise, print them all out in braces.
-  os << " {";
-  interleaveComma(filteredAttrs,
-                  [&](NamedAttribute attr) { printNamedAttribute(attr); });
-  os << '}';
+  // Otherwise, filter out any attributes that shouldn't be included.
+  llvm::SmallDenseSet<StringRef> elidedAttrsSet(elidedAttrs.begin(),
+                                                elidedAttrs.end());
+  auto filteredAttrs = llvm::make_filter_range(attrs, [&](NamedAttribute attr) {
+    return !elidedAttrsSet.contains(attr.first.strref());
+  });
+  if (!filteredAttrs.empty())
+    printFilteredAttributesFn(filteredAttrs);
 }
 
 void ModulePrinter::printNamedAttribute(NamedAttribute attr) {
@@ -2605,22 +2657,22 @@ void Operation::print(raw_ostream &os, OpPrintingFlags flags) {
   }
 
   // Find the operation to number from based upon the provided flags.
-  Operation *printedOp = this;
+  Operation *op = this;
   bool shouldUseLocalScope = flags.shouldUseLocalScope();
   do {
     // If we are printing local scope, stop at the first operation that is
     // isolated from above.
-    if (shouldUseLocalScope && printedOp->isKnownIsolatedFromAbove())
+    if (shouldUseLocalScope && op->hasTrait<OpTrait::IsIsolatedFromAbove>())
       break;
 
     // Otherwise, traverse up to the next parent.
-    Operation *parentOp = printedOp->getParentOp();
+    Operation *parentOp = op->getParentOp();
     if (!parentOp)
       break;
-    printedOp = parentOp;
+    op = parentOp;
   } while (true);
 
-  AsmState state(printedOp);
+  AsmState state(op);
   print(os, state, flags);
 }
 void Operation::print(raw_ostream &os, AsmState &state, OpPrintingFlags flags) {

@@ -62,6 +62,14 @@ static void warn(Twine Message, std::string Whence = "",
     WithColor::note() << Hint << "\n";
 }
 
+static void warn(Error E, StringRef Whence = "") {
+  if (E.isA<InstrProfError>()) {
+    handleAllErrors(std::move(E), [&](const InstrProfError &IPE) {
+      warn(IPE.message(), std::string(Whence), std::string(""));
+    });
+  }
+}
+
 static void exitWithError(Twine Message, std::string Whence = "",
                           std::string Hint = "") {
   WithColor::error();
@@ -309,15 +317,18 @@ static void writeInstrProfile(StringRef OutputFilename,
                               ProfileFormat OutputFormat,
                               InstrProfWriter &Writer) {
   std::error_code EC;
-  raw_fd_ostream Output(OutputFilename.data(), EC, sys::fs::OF_None);
+  raw_fd_ostream Output(OutputFilename.data(), EC,
+                        OutputFormat == PF_Text ? sys::fs::OF_Text
+                                                : sys::fs::OF_None);
   if (EC)
     exitWithErrorCode(EC, OutputFilename);
 
   if (OutputFormat == PF_Text) {
     if (Error E = Writer.writeText(Output))
-      exitWithError(std::move(E));
+      warn(std::move(E));
   } else {
-    Writer.write(Output);
+    if (Error E = Writer.write(Output))
+      warn(std::move(E));
   }
 }
 
@@ -707,7 +718,7 @@ mergeSampleProfile(const WeightedFileVector &Inputs, SymbolRemapper *Remapper,
           Remapper ? remapSamples(I->second, *Remapper, Result)
                    : FunctionSamples();
       FunctionSamples &Samples = Remapper ? Remapped : I->second;
-      StringRef FName = Samples.getName();
+      StringRef FName = Samples.getNameWithContext(true);
       MergeResult(Result, ProfileMap[FName].merge(Samples, Input.Weight));
       if (Result != sampleprof_error::success) {
         std::error_code EC = make_error_code(Result);
@@ -2265,7 +2276,6 @@ static void dumpHotFunctionList(const std::vector<std::string> &ColumnTitle,
     FOS.PadToColumn(ColumnOffset[3]);
     FOS << R.FuncName << "\n";
   }
-  return;
 }
 
 static int
@@ -2441,7 +2451,7 @@ static int show_main(int argc, const char *argv[]) {
   if (OutputFilename.empty())
     OutputFilename = "-";
 
-  if (!Filename.compare(OutputFilename)) {
+  if (Filename == OutputFilename) {
     errs() << sys::path::filename(argv[0])
            << ": Input file name cannot be the same as the output file name!\n";
     return 1;

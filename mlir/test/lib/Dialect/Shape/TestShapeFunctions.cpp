@@ -29,7 +29,7 @@ void ReportShapeFnPass::runOnOperation() {
   // Report the shape function available to refine the op.
   auto shapeFnId = Identifier::get("shape.function", &getContext());
   auto remarkShapeFn = [&](shape::FunctionLibraryOp shapeFnLib, Operation *op) {
-    if (op->isKnownTerminator())
+    if (op->hasTrait<OpTrait::IsTerminator>())
       return true;
     if (auto typeInterface = dyn_cast<InferTypeOpInterface>(op)) {
       op->emitRemark() << "implements InferType op interface";
@@ -49,7 +49,7 @@ void ReportShapeFnPass::runOnOperation() {
 
   // Lookup shape function library.
   SmallVector<shape::FunctionLibraryOp, 4> libraries;
-  auto attr = module.getAttr("shape.lib");
+  auto attr = module->getAttr("shape.lib");
   if (attr) {
     auto lookup = [&](Attribute attr) {
       return cast<shape::FunctionLibraryOp>(

@@ -164,7 +164,9 @@ struct SecHdrTableEntry {
 // will be saved in the higher 32 bits.
 enum class SecCommonFlags : uint32_t {
   SecFlagInValid = 0,
-  SecFlagCompress = (1 << 0)
+  SecFlagCompress = (1 << 0),
+  // Indicate the section contains only profile without context.
+  SecFlagFlat = (1 << 1)
 };
 
 // Section specific flags are defined here.
@@ -345,16 +347,19 @@ public:
     return SortedTargets;
   }
 
-  /// Merge the samples in \p Other into this record.
-  /// Optionally scale sample counts by \p Weight.
-  sampleprof_error merge(const SampleRecord &Other, uint64_t Weight = 1) {
-    sampleprof_error Result = addSamples(Other.getSamples(), Weight);
-    for (const auto &I : Other.getCallTargets()) {
-      MergeResult(Result, addCalledTarget(I.first(), I.second, Weight));
+  /// Prorate call targets by a distribution factor.
+  static const CallTargetMap adjustCallTargets(const CallTargetMap &Targets,
+                                               float DistributionFactor) {
+    CallTargetMap AdjustedTargets;
+    for (const auto &I : Targets) {
+      AdjustedTargets[I.first()] = I.second * DistributionFactor;
     }
-    return Result;
+    return AdjustedTargets;
   }
 
+  /// Merge the samples in \p Other into this record.
+  /// Optionally scale sample counts by \p Weight.
+  sampleprof_error merge(const SampleRecord &Other, uint64_t Weight = 1);
   void print(raw_ostream &OS, unsigned Indent) const;
   void dump() const;
 
@@ -437,9 +442,11 @@ public:
   void clearState(ContextStateMask S) { State &= (uint32_t)~S; }
   bool hasContext() const { return State != UnknownContext; }
   bool isBaseContext() const { return CallingContext.empty(); }
-  StringRef getName() const { return Name; }
+  StringRef getNameWithoutContext() const { return Name; }
   StringRef getCallingContext() const { return CallingContext; }
-  StringRef getNameWithContext() const { return FullContext; }
+  StringRef getNameWithContext(bool WithBracket = false) const {
+    return WithBracket ? InputContext : FullContext;
+  }
 
 private:
   // Give a context string, decode and populate internal states like
@@ -447,6 +454,7 @@ private:
   // `ContextStr`: `[main:3 @ _Z5funcAi:1 @ _Z8funcLeafi]`
   void setContext(StringRef ContextStr, ContextStateMask CState) {
     assert(!ContextStr.empty());
+    InputContext = ContextStr;
     // Note that `[]` wrapped input indicates a full context string, otherwise
     // it's treated as context-less function name only.
     bool HasContext = ContextStr.startswith("[");
@@ -478,6 +486,9 @@ private:
     }
   }
 
+  // Input context string including bracketed calling context and leaf function
+  // name
+  StringRef InputContext;
   // Full context string including calling context and leaf function name
   StringRef FullContext;
   // Function name for the associated sample profile
@@ -551,16 +562,15 @@ public:
       // For CSSPGO, in order to conserve profile size, we no longer write out
       // locations profile for those not hit during training, so we need to
       // treat them as zero instead of error here.
-      if (ProfileIsCS)
-        return 0;
-      return std::error_code();
-      // A missing counter for a probe likely means the probe was not executed.
-      // Treat it as a zero count instead of an unknown count to help edge
-      // weight inference.
-      if (FunctionSamples::ProfileIsProbeBased)
+      if (FunctionSamples::ProfileIsCS || FunctionSamples::ProfileIsProbeBased)
         return 0;
       return std::error_code();
     } else {
+      // Return error for an invalid sample count which is usually assigned to
+      // dangling probe.
+      if (FunctionSamples::ProfileIsProbeBased &&
+          ret->second.getSamples() == FunctionSamples::InvalidProbeCount)
+        return std::error_code();
       return ret->second.getSamples();
     }
   }
@@ -674,7 +684,8 @@ public:
     Name = Other.getName();
     if (!GUIDToFuncNameMap)
       GUIDToFuncNameMap = Other.GUIDToFuncNameMap;
-
+    if (Context.getNameWithContext(true).empty())
+      Context = Other.getContext();
     if (FunctionHash == 0) {
       // Set the function hash code for the target profile.
       FunctionHash = Other.getFunctionHash();
@@ -741,8 +752,10 @@ public:
   StringRef getName() const { return Name; }
 
   /// Return function name with context.
-  StringRef getNameWithContext() const {
-    return FunctionSamples::ProfileIsCS ? Context.getNameWithContext() : Name;
+  StringRef getNameWithContext(bool WithBracket = false) const {
+    return FunctionSamples::ProfileIsCS
+               ? Context.getNameWithContext(WithBracket)
+               : Name;
   }
 
   /// Return the original function name.
@@ -823,6 +836,10 @@ public:
   const FunctionSamples *findFunctionSamples(
       const DILocation *DIL,
       SampleProfileReaderItaniumRemapper *Remapper = nullptr) const;
+
+  // The invalid sample count is used to represent samples collected for a
+  // dangling probe.
+  static constexpr uint64_t InvalidProbeCount = UINT64_MAX;
 
   static bool ProfileIsProbeBased;
 

@@ -59,6 +59,17 @@ Examples of transformations for which this rule *does not* apply include:
 * LICM. E.g., if an instruction is moved from the loop body to the preheader,
   the rule for :ref:`dropping locations<WhenToDropLocation>` applies.
 
+In addition to the rule above, a transformation should also preserve the debug
+location of an instruction that is moved between basic blocks, if the
+destination block already contains an instruction with an identical debug
+location.
+
+Examples of transformations that should follow this rule include:
+
+* Moving instructions between basic blocks. For example, if instruction ``I1``
+  in ``BB1`` is moved before ``I2`` in ``BB2``, the source location of ``I1``
+  can be preserved if it has the same source location as ``I2``.
+
 .. _WhenToMergeLocation:
 
 When to merge instruction locations
@@ -218,8 +229,8 @@ An IR test case for a transformation can, in many cases, be automatically
 mutated to test debug info handling within that transformation. This is a
 simple way to test for proper debug info handling.
 
-The ``debugify`` utility
-^^^^^^^^^^^^^^^^^^^^^^^^
+The ``debugify`` utility pass
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 The ``debugify`` testing utility is just a pair of passes: ``debugify`` and
 ``check-debugify``.
@@ -334,6 +345,21 @@ tests. Changes to this pass are not allowed to break existing tests.
    be precise enough), moving the test to its own file is preferred.
 
 .. _MIRDebugify:
+
+Test original debug info preservation in optimizations
+------------------------------------------------------
+
+In addition to automatically generating debug info, the checks provided by
+the ``debugify`` utility pass can also be used to test the preservation of
+pre-existing debug info metadata. It could be run as follows:
+
+.. code-block:: bash
+
+  # Run the pass by checking original Debug Info preservation.
+  $ opt -verify-debuginfo-preserve -pass-to-test sample.ll
+
+  # Check the preservation of original Debug Info after each pass.
+  $ opt -verify-each-debuginfo-preserve -O2 sample.ll
 
 Mutation testing for MIR-level transformations
 ----------------------------------------------

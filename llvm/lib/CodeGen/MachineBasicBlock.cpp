@@ -87,6 +87,17 @@ MCSymbol *MachineBasicBlock::getSymbol() const {
   return CachedMCSymbol;
 }
 
+MCSymbol *MachineBasicBlock::getEHCatchretSymbol() const {
+  if (!CachedEHCatchretMCSymbol) {
+    const MachineFunction *MF = getParent();
+    SmallString<128> SymbolName;
+    raw_svector_ostream(SymbolName)
+        << "$ehgcr_" << MF->getFunctionNumber() << '_' << getNumber();
+    CachedEHCatchretMCSymbol = MF->getContext().getOrCreateSymbol(SymbolName);
+  }
+  return CachedEHCatchretMCSymbol;
+}
+
 MCSymbol *MachineBasicBlock::getEndSymbol() const {
   if (!CachedEndMCSymbol) {
     const MachineFunction *MF = getParent();
@@ -243,18 +254,22 @@ MachineBasicBlock::instr_iterator MachineBasicBlock::getFirstInstrTerminator() {
   return I;
 }
 
-MachineBasicBlock::iterator MachineBasicBlock::getFirstNonDebugInstr() {
+MachineBasicBlock::iterator
+MachineBasicBlock::getFirstNonDebugInstr(bool SkipPseudoOp) {
   // Skip over begin-of-block dbg_value instructions.
-  return skipDebugInstructionsForward(begin(), end());
+  return skipDebugInstructionsForward(begin(), end(), SkipPseudoOp);
 }
 
-MachineBasicBlock::iterator MachineBasicBlock::getLastNonDebugInstr() {
+MachineBasicBlock::iterator
+MachineBasicBlock::getLastNonDebugInstr(bool SkipPseudoOp) {
   // Skip over end-of-block dbg_value instructions.
   instr_iterator B = instr_begin(), I = instr_end();
   while (I != B) {
     --I;
     // Return instruction that starts a bundle.
     if (I->isDebugInstr() || I->isInsideBundle())
+      continue;
+    if (SkipPseudoOp && I->isPseudoProbe())
       continue;
     return I;
   }
@@ -353,11 +368,9 @@ void MachineBasicBlock::print(raw_ostream &OS, ModuleSlotTracker &MST,
     if (Indexes) OS << '\t';
     // Don't indent(2), align with previous line attributes.
     OS << "; predecessors: ";
-    for (auto I = pred_begin(), E = pred_end(); I != E; ++I) {
-      if (I != pred_begin())
-        OS << ", ";
-      OS << printMBBReference(**I);
-    }
+    ListSeparator LS;
+    for (auto *Pred : predecessors())
+      OS << LS << printMBBReference(*Pred);
     OS << '\n';
     HasLineAttributes = true;
   }
@@ -366,10 +379,9 @@ void MachineBasicBlock::print(raw_ostream &OS, ModuleSlotTracker &MST,
     if (Indexes) OS << '\t';
     // Print the successors
     OS.indent(2) << "successors: ";
+    ListSeparator LS;
     for (auto I = succ_begin(), E = succ_end(); I != E; ++I) {
-      if (I != succ_begin())
-        OS << ", ";
-      OS << printMBBReference(**I);
+      OS << LS << printMBBReference(**I);
       if (!Probs.empty())
         OS << '('
            << format("0x%08" PRIx32, getSuccProbability(I).getNumerator())
@@ -378,11 +390,10 @@ void MachineBasicBlock::print(raw_ostream &OS, ModuleSlotTracker &MST,
     if (!Probs.empty() && IsStandalone) {
       // Print human readable probabilities as comments.
       OS << "; ";
+      ListSeparator LS;
       for (auto I = succ_begin(), E = succ_end(); I != E; ++I) {
         const BranchProbability &BP = getSuccProbability(I);
-        if (I != succ_begin())
-          OS << ", ";
-        OS << printMBBReference(**I) << '('
+        OS << LS << printMBBReference(**I) << '('
            << format("%.2f%%",
                      rint(((double)BP.getNumerator() / BP.getDenominator()) *
                           100.0 * 100.0) /
@@ -399,12 +410,9 @@ void MachineBasicBlock::print(raw_ostream &OS, ModuleSlotTracker &MST,
     if (Indexes) OS << '\t';
     OS.indent(2) << "liveins: ";
 
-    bool First = true;
+    ListSeparator LS;
     for (const auto &LI : liveins()) {
-      if (!First)
-        OS << ", ";
-      First = false;
-      OS << printReg(LI.PhysReg, TRI);
+      OS << LS << printReg(LI.PhysReg, TRI);
       if (!LI.LaneMask.all())
         OS << ":0x" << PrintLaneMask(LI.LaneMask);
     }
@@ -890,6 +898,32 @@ MachineBasicBlock::transferSuccessorsAndUpdatePHIs(MachineBasicBlock *FromMBB) {
   normalizeSuccProbs();
 }
 
+/// A block emptied (i.e., with all instructions moved out of it) won't be
+/// sampled at run time. In such cases, AutoFDO will be informed of zero samples
+/// collected for the block. This is not accurate and could lead to misleading
+/// weights assigned for the block. A way to mitigate that is to treat such
+/// block as having unknown counts in the AutoFDO profile loader and allow the
+/// counts inference tool a chance to calculate a relatively reasonable weight
+/// for it. This can be done by moving all pseudo probes in the emptied block
+/// i.e, /c this, to before /c ToMBB and tag them dangling. Note that this is
+/// not needed for dead blocks which really have a zero weight. It's per
+/// transforms to decide whether to call this function or not.
+void MachineBasicBlock::moveAndDanglePseudoProbes(MachineBasicBlock *ToMBB) {
+  SmallVector<MachineInstr *, 4> ToBeMoved;
+  for (MachineInstr &MI : instrs()) {
+    if (MI.isPseudoProbe()) {
+      MI.addPseudoProbeAttribute(PseudoProbeAttributes::Dangling);
+      ToBeMoved.push_back(&MI);
+    }
+  }
+
+  MachineBasicBlock::iterator I = ToMBB->getFirstTerminator();
+  for (MachineInstr *MI : ToBeMoved) {
+    MI->removeFromParent();
+    ToMBB->insert(I, MI);
+  }
+}
+
 bool MachineBasicBlock::isPredecessor(const MachineBasicBlock *MBB) const {
   return is_contained(predecessors(), MBB);
 }
@@ -987,7 +1021,7 @@ MachineBasicBlock *MachineBasicBlock::splitAt(MachineInstr &MI,
     addLiveIns(*SplitBB, LiveRegs);
 
   if (LIS)
-    LIS->insertMBBInMaps(SplitBB, &MI);
+    LIS->insertMBBInMaps(SplitBB);
 
   return SplitBB;
 }
@@ -1082,10 +1116,9 @@ MachineBasicBlock *MachineBasicBlock::SplitCriticalEdge(
          I != E; ++I)
       NewTerminators.push_back(&*I);
 
-    for (SmallVectorImpl<MachineInstr*>::iterator I = Terminators.begin(),
-        E = Terminators.end(); I != E; ++I) {
-      if (!is_contained(NewTerminators, *I))
-        Indexes->removeMachineInstrFromMaps(**I);
+    for (MachineInstr *Terminator : Terminators) {
+      if (!is_contained(NewTerminators, Terminator))
+        Indexes->removeMachineInstrFromMaps(*Terminator);
     }
   }
 

@@ -96,6 +96,12 @@ def StdC : StandardSpec<"stdc"> {
       ]
   >;
 
+  NamedType FEnvT = NamedType<"fenv_t">;
+  PtrType FEnvTPtr = PtrType<FEnvT>;
+  ConstType ConstFEnvTPtr = ConstType<FEnvTPtr>;
+  NamedType FExceptT = NamedType<"fexcept_t">;
+  PtrType FExceptTPtr = PtrType<FExceptT>;
+  ConstType ConstFExceptTPtr = ConstType<FExceptTPtr>;
   HeaderSpec Fenv = HeaderSpec<
       "fenv.h",
       [
@@ -111,7 +117,10 @@ def StdC : StandardSpec<"stdc"> {
           Macro<"FE_TOWARDZERO">,
           Macro<"FE_UPWARD">
       ],
-      [], // Types
+      [
+          NamedType<"fenv_t">,
+          NamedType<"fexcept_t">,
+      ], // Types
       [], // Enumerations
       [
           FunctionSpec<
@@ -138,6 +147,36 @@ def StdC : StandardSpec<"stdc"> {
               "fegetround",
               RetValSpec<IntType>,
               []
+          >,
+          FunctionSpec<
+              "fegetenv",
+              RetValSpec<IntType>,
+              [ArgSpec<FEnvTPtr>]
+          >,
+          FunctionSpec<
+              "fesetenv",
+              RetValSpec<IntType>,
+              [ArgSpec<ConstFEnvTPtr>]
+          >,
+          FunctionSpec<
+              "fegetexceptflag",
+              RetValSpec<IntType>,
+              [ArgSpec<FExceptTPtr>, ArgSpec<IntType>]
+          >,
+          FunctionSpec<
+              "fesetexceptflag",
+              RetValSpec<IntType>,
+              [ArgSpec<ConstFExceptTPtr>, ArgSpec<IntType>]
+          >,
+          FunctionSpec<
+              "feholdexcept",
+              RetValSpec<IntType>,
+              [ArgSpec<FEnvTPtr>]
+          >,
+          FunctionSpec<
+              "feupdateenv",
+              RetValSpec<IntType>,
+              [ArgSpec<ConstFEnvTPtr>]
           >,
       ]
   >;
@@ -322,6 +361,8 @@ def StdC : StandardSpec<"stdc"> {
           FunctionSpec<"fmaxf", RetValSpec<FloatType>, [ArgSpec<FloatType>, ArgSpec<FloatType>]>,
           FunctionSpec<"fmaxl", RetValSpec<LongDoubleType>, [ArgSpec<LongDoubleType>, ArgSpec<LongDoubleType>]>,
 
+          FunctionSpec<"fmaf", RetValSpec<FloatType>, [ArgSpec<FloatType>, ArgSpec<FloatType>, ArgSpec<FloatType>]>,
+
           FunctionSpec<"frexp", RetValSpec<DoubleType>, [ArgSpec<DoubleType>, ArgSpec<IntPtr>]>,
           FunctionSpec<"frexpf", RetValSpec<FloatType>, [ArgSpec<FloatType>, ArgSpec<IntPtr>]>,
           FunctionSpec<"frexpl", RetValSpec<LongDoubleType>, [ArgSpec<LongDoubleType>, ArgSpec<IntPtr>]>,
@@ -390,6 +431,14 @@ def StdC : StandardSpec<"stdc"> {
           FunctionSpec<"trunc", RetValSpec<DoubleType>, [ArgSpec<DoubleType>]>,
           FunctionSpec<"truncf", RetValSpec<FloatType>, [ArgSpec<FloatType>]>,
           FunctionSpec<"truncl", RetValSpec<LongDoubleType>, [ArgSpec<LongDoubleType>]>,
+
+          FunctionSpec<"nearbyint", RetValSpec<DoubleType>, [ArgSpec<DoubleType>]>,
+          FunctionSpec<"nearbyintf", RetValSpec<FloatType>, [ArgSpec<FloatType>]>,
+          FunctionSpec<"nearbyintl", RetValSpec<LongDoubleType>, [ArgSpec<LongDoubleType>]>,
+
+          FunctionSpec<"nextafterf", RetValSpec<FloatType>, [ArgSpec<FloatType>, ArgSpec<FloatType>]>,
+          FunctionSpec<"nextafter", RetValSpec<DoubleType>, [ArgSpec<DoubleType>, ArgSpec<DoubleType>]>,
+          FunctionSpec<"nextafterl", RetValSpec<LongDoubleType>, [ArgSpec<LongDoubleType>, ArgSpec<LongDoubleType>]>,
       ]
   >;
 
