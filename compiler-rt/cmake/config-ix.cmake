@@ -438,15 +438,15 @@ if(APPLE)
   endif()
 
   set(DARWIN_osx_CFLAGS
-    ${DARWIN_COMMON_CFLAGS}
-    ${DARWIN_osx_MIN_VER_FLAG}=${SANITIZER_MIN_OSX_VERSION})
+    ${DARWIN_COMMON_CFLAGS})
+#${DARWIN_osx_MIN_VER_FLAG}=${SANITIZER_MIN_OSX_VERSION})
   set(DARWIN_osx_LINK_FLAGS
-    ${DARWIN_COMMON_LINK_FLAGS}
-    ${DARWIN_osx_MIN_VER_FLAG}=${SANITIZER_MIN_OSX_VERSION})
+    ${DARWIN_COMMON_LINK_FLAGS})
+#    ${DARWIN_osx_MIN_VER_FLAG}=${SANITIZER_MIN_OSX_VERSION})
 
   if(DARWIN_osx_SYSROOT)
-    list(APPEND DARWIN_osx_CFLAGS -isysroot ${DARWIN_osx_SYSROOT})
-    list(APPEND DARWIN_osx_LINK_FLAGS -isysroot ${DARWIN_osx_SYSROOT})
+	  #   list(APPEND DARWIN_osx_CFLAGS -isysroot ${DARWIN_osx_SYSROOT})
+	  #   list(APPEND DARWIN_osx_LINK_FLAGS -isysroot ${DARWIN_osx_SYSROOT})
   endif()
 
   # Figure out which arches to use for each OS

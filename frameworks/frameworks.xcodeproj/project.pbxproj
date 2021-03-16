@@ -213,12 +213,12 @@
 		228B14F023A8210100FE5B43 /* LinkingContext.cpp.o in Frameworks */ = {isa = PBXBuildFile; fileRef = 228B14E823A8210000FE5B43 /* LinkingContext.cpp.o */; };
 		228B14F123A8210100FE5B43 /* DefinedAtom.cpp.o in Frameworks */ = {isa = PBXBuildFile; fileRef = 228B14E923A8210000FE5B43 /* DefinedAtom.cpp.o */; };
 		228B14F223A8210100FE5B43 /* Resolver.cpp.o in Frameworks */ = {isa = PBXBuildFile; fileRef = 228B14EA23A8210000FE5B43 /* Resolver.cpp.o */; };
+		22B3E42B260115400077421B /* ExecutionUtils.cpp.o in Frameworks */ = {isa = PBXBuildFile; fileRef = 22B3E42A2601153F0077421B /* ExecutionUtils.cpp.o */; platformFilter = ios; };
 		22BAC590259CA67700B51FD6 /* ios_system.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = 22BAC58F259CA67700B51FD6 /* ios_system.xcframework */; };
 		22BAC59C259CA94000B51FD6 /* libLLVMCFGuard.a in Frameworks */ = {isa = PBXBuildFile; fileRef = 22BAC59B259CA94000B51FD6 /* libLLVMCFGuard.a */; };
 		22BAC5A8259CAAA700B51FD6 /* libLLVMOrcTargetProcess.a in Frameworks */ = {isa = PBXBuildFile; fileRef = 22BAC5A7259CAAA700B51FD6 /* libLLVMOrcTargetProcess.a */; };
 		22BAC5AA259CAB6B00B51FD6 /* libLLVMFrontendOpenMP.a in Frameworks */ = {isa = PBXBuildFile; fileRef = 22BAC5A9259CAB6B00B51FD6 /* libLLVMFrontendOpenMP.a */; };
 		22BAC5AC259CAC1300B51FD6 /* libLLVMOrcShared.a in Frameworks */ = {isa = PBXBuildFile; fileRef = 22BAC5AB259CAC1300B51FD6 /* libLLVMOrcShared.a */; };
-		22BAC5AE259CAC4400B51FD6 /* libLLVMHelloNew.a in Frameworks */ = {isa = PBXBuildFile; fileRef = 22BAC5AD259CAC4300B51FD6 /* libLLVMHelloNew.a */; };
 		22BAC5AF259CAC6E00B51FD6 /* ios_system.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = 22BAC58F259CA67700B51FD6 /* ios_system.xcframework */; };
 		22BAC5BA259CAC8900B51FD6 /* ios_system.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = 22BAC58F259CA67700B51FD6 /* ios_system.xcframework */; };
 		22BAC5C5259CAD1700B51FD6 /* ios_system.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = 22BAC58F259CA67700B51FD6 /* ios_system.xcframework */; };
@@ -374,7 +374,7 @@
 		22720AAE2386EBF6005BEB9E /* libclangToolingInclusions.a */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; name = libclangToolingInclusions.a; path = ./lib/libclangToolingInclusions.a; sourceTree = "<group>"; };
 		22720AB02386EC02005BEB9E /* libclangToolingSyntax.a */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; name = libclangToolingSyntax.a; path = ./lib/libclangToolingSyntax.a; sourceTree = "<group>"; };
 		228B141523A81EC700FE5B43 /* lld.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = lld.framework; sourceTree = BUILT_PRODUCTS_DIR; };
-		228B142F23A8200200FE5B43 /* libc++.tbd */ = {isa = PBXFileReference; lastKnownFileType = "sourcecode.text-based-dylib-definition"; name = "libc++.tbd"; path = "Platforms/MacOSX.platform/Developer/SDKs/MacOSX10.15.sdk/usr/lib/libc++.tbd"; sourceTree = DEVELOPER_DIR; };
+		228B142F23A8200200FE5B43 /* libc++.tbd */ = {isa = PBXFileReference; lastKnownFileType = "sourcecode.text-based-dylib-definition"; name = "libc++.tbd"; path = "/Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS14.4.sdk/../../../../MacOSX.platform/Developer/SDKs/MacOSX10.15.sdk/usr/lib/libc++.tbd"; sourceTree = "<absolute>"; };
 		228B143123A8201F00FE5B43 /* lld.cpp.o */ = {isa = PBXFileReference; lastKnownFileType = "compiled.mach-o.objfile"; name = lld.cpp.o; path = ./tools/lld/tools/lld/CMakeFiles/lld.dir/lld.cpp.o; sourceTree = "<group>"; };
 		228B145123A8204A00FE5B43 /* Memory.cpp.o */ = {isa = PBXFileReference; lastKnownFileType = "compiled.mach-o.objfile"; name = Memory.cpp.o; path = ./tools/lld/Common/CMakeFiles/lldCommon.dir/Memory.cpp.o; sourceTree = "<group>"; };
 		228B145223A8204A00FE5B43 /* Version.cpp.o */ = {isa = PBXFileReference; lastKnownFileType = "compiled.mach-o.objfile"; name = Version.cpp.o; path = ./tools/lld/Common/CMakeFiles/lldCommon.dir/Version.cpp.o; sourceTree = "<group>"; };
@@ -457,12 +457,12 @@
 		228B14E823A8210000FE5B43 /* LinkingContext.cpp.o */ = {isa = PBXFileReference; lastKnownFileType = "compiled.mach-o.objfile"; name = LinkingContext.cpp.o; path = ./tools/lld/lib/Core/CMakeFiles/lldCore.dir/LinkingContext.cpp.o; sourceTree = "<group>"; };
 		228B14E923A8210000FE5B43 /* DefinedAtom.cpp.o */ = {isa = PBXFileReference; lastKnownFileType = "compiled.mach-o.objfile"; name = DefinedAtom.cpp.o; path = ./tools/lld/lib/Core/CMakeFiles/lldCore.dir/DefinedAtom.cpp.o; sourceTree = "<group>"; };
 		228B14EA23A8210000FE5B43 /* Resolver.cpp.o */ = {isa = PBXFileReference; lastKnownFileType = "compiled.mach-o.objfile"; name = Resolver.cpp.o; path = ./tools/lld/lib/Core/CMakeFiles/lldCore.dir/Resolver.cpp.o; sourceTree = "<group>"; };
-		22BAC58F259CA67700B51FD6 /* ios_system.xcframework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.xcframework; name = ios_system.xcframework; path = "../../../../Library/Developer/Xcode/DerivedData/frameworks-eqvjrivclxpbplgwicxlncaoprmx/SourcePackages/artifacts/ios_system/ios_system.xcframework"; sourceTree = "<group>"; };
+		22B3E42A2601153F0077421B /* ExecutionUtils.cpp.o */ = {isa = PBXFileReference; lastKnownFileType = "compiled.mach-o.objfile"; name = ExecutionUtils.cpp.o; path = tools/lli/CMakeFiles/lli.dir/ExecutionUtils.cpp.o; sourceTree = "<group>"; };
+		22BAC58F259CA67700B51FD6 /* ios_system.xcframework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.xcframework; name = ios_system.xcframework; path = ../ios_system.xcframework; sourceTree = "<group>"; };
 		22BAC59B259CA94000B51FD6 /* libLLVMCFGuard.a */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; name = libLLVMCFGuard.a; path = lib/libLLVMCFGuard.a; sourceTree = "<group>"; };
 		22BAC5A7259CAAA700B51FD6 /* libLLVMOrcTargetProcess.a */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; name = libLLVMOrcTargetProcess.a; path = lib/libLLVMOrcTargetProcess.a; sourceTree = "<group>"; };
 		22BAC5A9259CAB6B00B51FD6 /* libLLVMFrontendOpenMP.a */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; name = libLLVMFrontendOpenMP.a; path = lib/libLLVMFrontendOpenMP.a; sourceTree = "<group>"; };
 		22BAC5AB259CAC1300B51FD6 /* libLLVMOrcShared.a */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; name = libLLVMOrcShared.a; path = lib/libLLVMOrcShared.a; sourceTree = "<group>"; };
-		22BAC5AD259CAC4300B51FD6 /* libLLVMHelloNew.a */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; name = libLLVMHelloNew.a; path = lib/libLLVMHelloNew.a; sourceTree = "<group>"; };
 		22BAC5D0259CAD8500B51FD6 /* liblldCOFF.a */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; name = liblldCOFF.a; path = lib/liblldCOFF.a; sourceTree = "<group>"; };
 		22BAC5D2259CADCE00B51FD6 /* liblldMachO.a */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; name = liblldMachO.a; path = lib/liblldMachO.a; sourceTree = "<group>"; };
 		22BAC5D4259CAE0800B51FD6 /* liblldWasm.a */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; name = liblldWasm.a; path = lib/liblldWasm.a; sourceTree = "<group>"; };
@@ -585,7 +585,6 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				22BAC5AE259CAC4400B51FD6 /* libLLVMHelloNew.a in Frameworks */,
 				22BAC5AC259CAC1300B51FD6 /* libLLVMOrcShared.a in Frameworks */,
 				22BAC5AA259CAB6B00B51FD6 /* libLLVMFrontendOpenMP.a in Frameworks */,
 				22BAC5A8259CAAA700B51FD6 /* libLLVMOrcTargetProcess.a in Frameworks */,
@@ -772,6 +771,7 @@
 				22BAC5AF259CAC6E00B51FD6 /* ios_system.xcframework in Frameworks */,
 				22F4B308238C8BD8002C1DD6 /* lli.cpp.o in Frameworks */,
 				22C505CD209A3CB500FDDFA9 /* libc++.tbd in Frameworks */,
+				22B3E42B260115400077421B /* ExecutionUtils.cpp.o in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -883,7 +883,6 @@
 				22BAC5D4259CAE0800B51FD6 /* liblldWasm.a */,
 				22BAC5D2259CADCE00B51FD6 /* liblldMachO.a */,
 				22BAC5D0259CAD8500B51FD6 /* liblldCOFF.a */,
-				22BAC5AD259CAC4300B51FD6 /* libLLVMHelloNew.a */,
 				22BAC5AB259CAC1300B51FD6 /* libLLVMOrcShared.a */,
 				22BAC5A9259CAB6B00B51FD6 /* libLLVMFrontendOpenMP.a */,
 				22BAC5A7259CAAA700B51FD6 /* libLLVMOrcTargetProcess.a */,
@@ -985,6 +984,7 @@
 				89DD5C5F239CDE3D00382F34 /* libLLVMWebAssemblyDisassembler.a */,
 				89DD5C60239CDE3D00382F34 /* libLLVMWebAssemblyInfo.a */,
 				22F4B307238C8BD8002C1DD6 /* lli.cpp.o */,
+				22B3E42A2601153F0077421B /* ExecutionUtils.cpp.o */,
 				22C1D2E720A841E60093127F /* libobjc.tbd */,
 				223794CC209B56AF00B15016 /* libcurses.tbd */,
 				223794CA209B568A00B15016 /* libz.tbd */,
@@ -1431,7 +1431,6 @@
 			);
 			mainGroup = 22C505B2209A3B5800FDDFA9;
 			packageReferences = (
-				22BAC582259CA64800B51FD6 /* XCRemoteSwiftPackageReference "ios_system" */,
 			);
 			productRefGroup = 22C505BD209A3B5800FDDFA9 /* Products */;
 			projectDirPath = "";
@@ -1611,13 +1610,17 @@
 				ENABLE_BITCODE = NO;
 				INFOPLIST_FILE = ../frameworks/ar/Info.plist;
 				INSTALL_PATH = "$(LOCAL_LIBRARY_DIR)/Frameworks";
-				IPHONEOS_DEPLOYMENT_TARGET = 11.0;
+				IPHONEOS_DEPLOYMENT_TARGET = 14.1;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
 					"@loader_path/Frameworks",
 				);
-				OTHER_LDFLAGS = "-all_load";
+				OTHER_LDFLAGS = (
+					"-all_load",
+					"-F",
+					..,
+				);
 				PRODUCT_BUNDLE_IDENTIFIER = "Nicolas-Holzschuch.ar";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SKIP_INSTALL = YES;
@@ -1638,13 +1641,17 @@
 				ENABLE_BITCODE = NO;
 				INFOPLIST_FILE = ../frameworks/ar/Info.plist;
 				INSTALL_PATH = "$(LOCAL_LIBRARY_DIR)/Frameworks";
-				IPHONEOS_DEPLOYMENT_TARGET = 11.0;
+				IPHONEOS_DEPLOYMENT_TARGET = 14.1;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
 					"@loader_path/Frameworks",
 				);
-				OTHER_LDFLAGS = "-all_load";
+				OTHER_LDFLAGS = (
+					"-all_load",
+					"-F",
+					..,
+				);
 				PRODUCT_BUNDLE_IDENTIFIER = "Nicolas-Holzschuch.ar";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SKIP_INSTALL = YES;
@@ -1665,7 +1672,7 @@
 				ENABLE_BITCODE = NO;
 				INFOPLIST_FILE = ../frameworks/clang/Info.plist;
 				INSTALL_PATH = "$(LOCAL_LIBRARY_DIR)/Frameworks";
-				IPHONEOS_DEPLOYMENT_TARGET = 11.0;
+				IPHONEOS_DEPLOYMENT_TARGET = 14.1;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
@@ -1675,6 +1682,8 @@
 					"-L",
 					"../build${EFFECTIVE_PLATFORM_NAME}/lib",
 					"-all_load",
+					"-F",
+					..,
 				);
 				PRODUCT_BUNDLE_IDENTIFIER = "Nicolas-Holzschuch.clang";
 				PRODUCT_NAME = "$(TARGET_NAME:c99extidentifier)";
@@ -1697,7 +1706,7 @@
 				ENABLE_BITCODE = NO;
 				INFOPLIST_FILE = ../frameworks/clang/Info.plist;
 				INSTALL_PATH = "$(LOCAL_LIBRARY_DIR)/Frameworks";
-				IPHONEOS_DEPLOYMENT_TARGET = 11.0;
+				IPHONEOS_DEPLOYMENT_TARGET = 14.1;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
@@ -1707,6 +1716,8 @@
 					"-L",
 					"../build${EFFECTIVE_PLATFORM_NAME}/lib",
 					"-all_load",
+					"-F",
+					..,
 				);
 				PRODUCT_BUNDLE_IDENTIFIER = "Nicolas-Holzschuch.clang";
 				PRODUCT_NAME = "$(TARGET_NAME:c99extidentifier)";
@@ -1728,7 +1739,7 @@
 				ENABLE_BITCODE = NO;
 				INFOPLIST_FILE = ../frameworks/opt/Info.plist;
 				INSTALL_PATH = "$(LOCAL_LIBRARY_DIR)/Frameworks";
-				IPHONEOS_DEPLOYMENT_TARGET = 11.0;
+				IPHONEOS_DEPLOYMENT_TARGET = 14.1;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
@@ -1759,7 +1770,7 @@
 				ENABLE_BITCODE = NO;
 				INFOPLIST_FILE = ../frameworks/opt/Info.plist;
 				INSTALL_PATH = "$(LOCAL_LIBRARY_DIR)/Frameworks";
-				IPHONEOS_DEPLOYMENT_TARGET = 11.0;
+				IPHONEOS_DEPLOYMENT_TARGET = 14.1;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
@@ -1790,7 +1801,7 @@
 				ENABLE_BITCODE = NO;
 				INFOPLIST_FILE = ../frameworks/nm/Info.plist;
 				INSTALL_PATH = "$(LOCAL_LIBRARY_DIR)/Frameworks";
-				IPHONEOS_DEPLOYMENT_TARGET = 11.0;
+				IPHONEOS_DEPLOYMENT_TARGET = 14.1;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
@@ -1817,7 +1828,7 @@
 				ENABLE_BITCODE = NO;
 				INFOPLIST_FILE = ../frameworks/nm/Info.plist;
 				INSTALL_PATH = "$(LOCAL_LIBRARY_DIR)/Frameworks";
-				IPHONEOS_DEPLOYMENT_TARGET = 11.0;
+				IPHONEOS_DEPLOYMENT_TARGET = 14.1;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
@@ -1844,7 +1855,7 @@
 				ENABLE_BITCODE = NO;
 				INFOPLIST_FILE = ../frameworks/dis/Info.plist;
 				INSTALL_PATH = "$(LOCAL_LIBRARY_DIR)/Frameworks";
-				IPHONEOS_DEPLOYMENT_TARGET = 11.0;
+				IPHONEOS_DEPLOYMENT_TARGET = 14.1;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
@@ -1871,7 +1882,7 @@
 				ENABLE_BITCODE = NO;
 				INFOPLIST_FILE = ../frameworks/dis/Info.plist;
 				INSTALL_PATH = "$(LOCAL_LIBRARY_DIR)/Frameworks";
-				IPHONEOS_DEPLOYMENT_TARGET = 11.0;
+				IPHONEOS_DEPLOYMENT_TARGET = 14.1;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
@@ -1897,7 +1908,7 @@
 				DYLIB_INSTALL_NAME_BASE = "@rpath";
 				INFOPLIST_FILE = ../frameworks/link/Info.plist;
 				INSTALL_PATH = "$(LOCAL_LIBRARY_DIR)/Frameworks";
-				IPHONEOS_DEPLOYMENT_TARGET = 11.0;
+				IPHONEOS_DEPLOYMENT_TARGET = 14.1;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
@@ -1923,7 +1934,7 @@
 				DYLIB_INSTALL_NAME_BASE = "@rpath";
 				INFOPLIST_FILE = ../frameworks/link/Info.plist;
 				INSTALL_PATH = "$(LOCAL_LIBRARY_DIR)/Frameworks";
-				IPHONEOS_DEPLOYMENT_TARGET = 11.0;
+				IPHONEOS_DEPLOYMENT_TARGET = 14.1;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
@@ -1949,7 +1960,7 @@
 				DYLIB_INSTALL_NAME_BASE = "@rpath";
 				INFOPLIST_FILE = ../frameworks/libLLVM/Info.plist;
 				INSTALL_PATH = "$(LOCAL_LIBRARY_DIR)/Frameworks";
-				IPHONEOS_DEPLOYMENT_TARGET = 11.0;
+				IPHONEOS_DEPLOYMENT_TARGET = 14.1;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
@@ -1963,6 +1974,8 @@
 					"-all_load",
 					"-L",
 					"../build${EFFECTIVE_PLATFORM_NAME}/lib",
+					"-F",
+					..,
 				);
 				PRODUCT_BUNDLE_IDENTIFIER = "Nicolas-Holzschuch.libLLVM";
 				PRODUCT_NAME = "$(TARGET_NAME:c99extidentifier)";
@@ -1983,7 +1996,7 @@
 				DYLIB_INSTALL_NAME_BASE = "@rpath";
 				INFOPLIST_FILE = ../frameworks/libLLVM/Info.plist;
 				INSTALL_PATH = "$(LOCAL_LIBRARY_DIR)/Frameworks";
-				IPHONEOS_DEPLOYMENT_TARGET = 11.0;
+				IPHONEOS_DEPLOYMENT_TARGET = 14.1;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
@@ -1997,6 +2010,8 @@
 					"-all_load",
 					"-L",
 					"../build${EFFECTIVE_PLATFORM_NAME}/lib",
+					"-F",
+					..,
 				);
 				PRODUCT_BUNDLE_IDENTIFIER = "Nicolas-Holzschuch.libLLVM";
 				PRODUCT_NAME = "$(TARGET_NAME:c99extidentifier)";
@@ -2018,7 +2033,7 @@
 				ENABLE_BITCODE = NO;
 				INFOPLIST_FILE = "../frameworks/lld-Info.plist";
 				INSTALL_PATH = "$(LOCAL_LIBRARY_DIR)/Frameworks";
-				IPHONEOS_DEPLOYMENT_TARGET = 11.0;
+				IPHONEOS_DEPLOYMENT_TARGET = 14.1;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
@@ -2032,6 +2047,8 @@
 					"-L",
 					"../build${EFFECTIVE_PLATFORM_NAME}/lib",
 					"-all_load",
+					"-F",
+					..,
 				);
 				PRODUCT_BUNDLE_IDENTIFIER = "Nicolas-Holzschuch.lld";
 				PRODUCT_NAME = "$(TARGET_NAME)";
@@ -2054,7 +2071,7 @@
 				ENABLE_BITCODE = NO;
 				INFOPLIST_FILE = "../frameworks/lld-Info.plist";
 				INSTALL_PATH = "$(LOCAL_LIBRARY_DIR)/Frameworks";
-				IPHONEOS_DEPLOYMENT_TARGET = 11.0;
+				IPHONEOS_DEPLOYMENT_TARGET = 14.1;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
@@ -2068,6 +2085,8 @@
 					"-L",
 					"../build${EFFECTIVE_PLATFORM_NAME}/lib",
 					"-all_load",
+					"-F",
+					..,
 				);
 				PRODUCT_BUNDLE_IDENTIFIER = "Nicolas-Holzschuch.lld";
 				PRODUCT_NAME = "$(TARGET_NAME)";
@@ -2209,7 +2228,7 @@
 				ENABLE_BITCODE = NO;
 				INFOPLIST_FILE = ../frameworks/frameworks/Info.plist;
 				INSTALL_PATH = "$(LOCAL_LIBRARY_DIR)/Frameworks";
-				IPHONEOS_DEPLOYMENT_TARGET = 11.0;
+				IPHONEOS_DEPLOYMENT_TARGET = 14.1;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
@@ -2219,6 +2238,8 @@
 					"-all_load",
 					"-L",
 					"../build${EFFECTIVE_PLATFORM_NAME}/lib",
+					"-F",
+					..,
 				);
 				PRODUCT_BUNDLE_IDENTIFIER = "Nicolas-Holzschuch.lli";
 				PRODUCT_NAME = "$(TARGET_NAME:c99extidentifier)";
@@ -2240,7 +2261,7 @@
 				ENABLE_BITCODE = NO;
 				INFOPLIST_FILE = ../frameworks/frameworks/Info.plist;
 				INSTALL_PATH = "$(LOCAL_LIBRARY_DIR)/Frameworks";
-				IPHONEOS_DEPLOYMENT_TARGET = 11.0;
+				IPHONEOS_DEPLOYMENT_TARGET = 14.1;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
@@ -2250,6 +2271,8 @@
 					"-all_load",
 					"-L",
 					"../build${EFFECTIVE_PLATFORM_NAME}/lib",
+					"-F",
+					..,
 				);
 				PRODUCT_BUNDLE_IDENTIFIER = "Nicolas-Holzschuch.lli";
 				PRODUCT_NAME = "$(TARGET_NAME:c99extidentifier)";
@@ -2271,7 +2294,7 @@
 				ENABLE_BITCODE = NO;
 				INFOPLIST_FILE = ../frameworks/llc/Info.plist;
 				INSTALL_PATH = "$(LOCAL_LIBRARY_DIR)/Frameworks";
-				IPHONEOS_DEPLOYMENT_TARGET = 11.0;
+				IPHONEOS_DEPLOYMENT_TARGET = 14.1;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
@@ -2302,7 +2325,7 @@
 				ENABLE_BITCODE = NO;
 				INFOPLIST_FILE = ../frameworks/llc/Info.plist;
 				INSTALL_PATH = "$(LOCAL_LIBRARY_DIR)/Frameworks";
-				IPHONEOS_DEPLOYMENT_TARGET = 11.0;
+				IPHONEOS_DEPLOYMENT_TARGET = 14.1;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
@@ -2423,17 +2446,6 @@
 			defaultConfigurationName = Release;
 		};
 /* End XCConfigurationList section */
-
-/* Begin XCRemoteSwiftPackageReference section */
-		22BAC582259CA64800B51FD6 /* XCRemoteSwiftPackageReference "ios_system" */ = {
-			isa = XCRemoteSwiftPackageReference;
-			repositoryURL = "https://github.com/holzschu/ios_system.git";
-			requirement = {
-				branch = master;
-				kind = branch;
-			};
-		};
-/* End XCRemoteSwiftPackageReference section */
 	};
 	rootObject = 22C505B3209A3B5800FDDFA9 /* Project object */;
 }
