@@ -445,17 +445,35 @@ void WasmObjectWriter::recordRelocation(MCAssembler &Asm,
   uint64_t C = Target.getConstant();
   uint64_t FixupOffset = Layout.getFragmentOffset(Fragment) + Fixup.getOffset();
   MCContext &Ctx = Asm.getContext();
+  bool IsLocRel = false;
 
   if (const MCSymbolRefExpr *RefB = Target.getSymB()) {
-    // To get here the A - B expression must have failed evaluateAsRelocatable.
-    // This means either A or B must be undefined and in WebAssembly we can't
-    // support either of those cases.
+
     const auto &SymB = cast<MCSymbolWasm>(RefB->getSymbol());
-    Ctx.reportError(
-        Fixup.getLoc(),
-        Twine("symbol '") + SymB.getName() +
-            "': unsupported subtraction expression used in relocation.");
-    return;
+
+    if (FixupSection.getKind().isText()) {
+      Ctx.reportError(Fixup.getLoc(),
+                      Twine("symbol '") + SymB.getName() +
+                          "' unsupported subtraction expression used in "
+                          "relocation in code section.");
+      return;
+    }
+
+    if (SymB.isUndefined()) {
+      Ctx.reportError(Fixup.getLoc(),
+                      Twine("symbol '") + SymB.getName() +
+                          "' can not be undefined in a subtraction expression");
+      return;
+    }
+    const MCSection &SecB = SymB.getSection();
+    if (&SecB != &FixupSection) {
+      Ctx.reportError(Fixup.getLoc(),
+                      Twine("symbol '") + SymB.getName() +
+                          "' can not be placed in a different section");
+      return;
+    }
+    IsLocRel = true;
+    C += FixupOffset - Layout.getSymbolOffset(SymB);
   }
 
   // We either rejected the fixup or folded B into C at this point.
@@ -480,7 +498,7 @@ void WasmObjectWriter::recordRelocation(MCAssembler &Asm,
   // be negative and don't wrap.
   FixedValue = 0;
 
-  unsigned Type = TargetObjectWriter->getRelocType(Target, Fixup);
+  unsigned Type = TargetObjectWriter->getRelocType(Target, Fixup, IsLocRel);
 
   // Absolute offset within a section or a function.
   // Currently only supported for for metadata sections.
@@ -611,7 +629,8 @@ WasmObjectWriter::getProvisionalValue(const WasmRelocationEntry &RelEntry,
   case wasm::R_WASM_MEMORY_ADDR_REL_SLEB64:
   case wasm::R_WASM_MEMORY_ADDR_I32:
   case wasm::R_WASM_MEMORY_ADDR_I64:
-  case wasm::R_WASM_MEMORY_ADDR_TLS_SLEB: {
+  case wasm::R_WASM_MEMORY_ADDR_TLS_SLEB:
+  case wasm::R_WASM_MEMORY_ADDR_LOCREL_I32: {
     // Provisional value is address of the global plus the offset
     // For undefined symbols, use zero
     if (!RelEntry.Symbol->isDefined())
@@ -707,6 +726,7 @@ void WasmObjectWriter::applyRelocations(
     case wasm::R_WASM_FUNCTION_OFFSET_I32:
     case wasm::R_WASM_SECTION_OFFSET_I32:
     case wasm::R_WASM_GLOBAL_INDEX_I32:
+    case wasm::R_WASM_MEMORY_ADDR_LOCREL_I32:
       patchI32(Stream, Value, Offset);
       break;
     case wasm::R_WASM_TABLE_INDEX_I64:
@@ -879,7 +899,7 @@ void WasmObjectWriter::writeTableSection(ArrayRef<wasm::WasmTable> Tables) {
   for (const wasm::WasmTable &Table : Tables) {
     encodeULEB128(Table.Type.ElemType, W->OS);
     encodeULEB128(Table.Type.Limits.Flags, W->OS);
-    encodeULEB128(Table.Type.Limits.Initial, W->OS);
+    encodeULEB128(Table.Type.Limits.Minimum, W->OS);
     if (Table.Type.Limits.Flags & wasm::WASM_LIMITS_FLAG_HAS_MAX)
       encodeULEB128(Table.Type.Limits.Maximum, W->OS);
   }
@@ -1318,12 +1338,7 @@ void WasmObjectWriter::prepareImports(
         Import.Module = WS.getImportModule();
         Import.Field = WS.getImportName();
         Import.Kind = wasm::WASM_EXTERNAL_TABLE;
-        wasm::ValType ElemType = WS.getTableType();
-        Import.Table.ElemType = uint8_t(ElemType);
-        // FIXME: Extend table type to include limits? For now we don't specify
-        // a min or max which does not place any restrictions on the size of the
-        // imported table.
-        Import.Table.Limits = {wasm::WASM_LIMITS_FLAG_NONE, 0, 0};
+        Import.Table = WS.getTableType();
         Imports.push_back(Import);
         assert(WasmIndices.count(&WS) == 0);
         WasmIndices[&WS] = NumTableImports++;
@@ -1606,9 +1621,7 @@ uint64_t WasmObjectWriter::writeOneObject(MCAssembler &Asm,
         if (WS.isDefined()) {
           wasm::WasmTable Table;
           Table.Index = NumTableImports + Tables.size();
-          Table.Type.ElemType = static_cast<uint8_t>(WS.getTableType());
-          // FIXME: Work on custom limits is ongoing
-          Table.Type.Limits = {wasm::WASM_LIMITS_FLAG_NONE, 0, 0};
+          Table.Type = WS.getTableType();
           assert(WasmIndices.count(&WS) == 0);
           WasmIndices[&WS] = Table.Index;
           Tables.push_back(Table);
