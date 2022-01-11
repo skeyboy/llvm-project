@@ -54,7 +54,7 @@ fi
 pushd $OSX_BUILDDIR
 cmake -G Ninja \
 -DLLVM_TARGETS_TO_BUILD="AArch64;X86;WebAssembly" \
--DLLVM_ENABLE_PROJECTS='clang;libcxx;libcxxabi;compiler-rt;lld;flang;openmp' \
+-DLLVM_ENABLE_PROJECTS='clang;compiler-rt;lld;libcxx;libcxxabi;flang;openmp' \
 -DLLVM_LINK_LLVM_DYLIB=ON \
 -DCMAKE_BUILD_TYPE=Release \
 -DCMAKE_OSX_SYSROOT=${OSX_SDKROOT} \
@@ -91,7 +91,7 @@ cmake -G Ninja \
 -DLLVM_LINK_LLVM_DYLIB=ON \
 -DLLVM_TARGET_ARCH=AArch64 \
 -DLLVM_TARGETS_TO_BUILD="AArch64;X86;WebAssembly" \
--DLLVM_ENABLE_PROJECTS='clang;libcxx;libcxxabi;lld;compiler-rt;openmp' \
+-DLLVM_ENABLE_PROJECTS='clang;lld;compiler-rt;libcxx;libcxxabi;openmp' \
 -DLLVM_DEFAULT_TARGET_TRIPLE=arm64-apple-darwin \
 -DCMAKE_BUILD_TYPE=Release \
 -DLLVM_ENABLE_THREADS=OFF \
@@ -103,6 +103,7 @@ cmake -G Ninja \
 -DCLANG_TABLEGEN=${OSX_BUILDDIR}/bin/clang-tblgen \
 -DCMAKE_OSX_SYSROOT=${IOS_SDKROOT} \
 -DCMAKE_C_COMPILER=${OSX_BUILDDIR}/bin/clang \
+-DCMAKE_CXX_COMPILER=${OSX_BUILDDIR}/bin/clang++ \
 -DCMAKE_LIBRARY_PATH=${OSX_BUILDDIR}/lib/ \
 -DCMAKE_INCLUDE_PATH=${OSX_BUILDDIR}/include/ \
 -DCOMPILER_RT_BUILD_BUILTINS=ON \
@@ -111,7 +112,7 @@ cmake -G Ninja \
 -DCOMPILER_RT_BUILD_PROFILE=OFF \
 -DCOMPILER_RT_BUILD_SANITIZERS=OFF \
 -DCOMPILER_RT_BUILD_XRAY=OFF \
--DLIBOMP_LDFLAGS="-L lib/clang/13.0.0/lib/darwin -lclang_rt.ios" \
+-DLIBOMP_LDFLAGS="-L lib/clang/14.0.0/lib/darwin -lclang_rt.cc_kext_ios" \
 -DCMAKE_C_FLAGS="-arch arm64 -target arm64-apple-darwin19.6.0 -O2 -D_LIBCPP_STRING_H_HAS_CONST_OVERLOADS  -I${OSX_BUILDDIR}/include/ -I${OSX_BUILDDIR}/include/c++/v1/ -I${LLVM_SRCDIR} -miphoneos-version-min=14  " \
 -DCMAKE_CXX_FLAGS="-arch arm64 -target arm64-apple-darwin19.6.0 -O2 -D_LIBCPP_STRING_H_HAS_CONST_OVERLOADS -I${OSX_BUILDDIR}/include/  -I${LLVM_SRCDIR} -miphoneos-version-min=14 " \
 -DCMAKE_MODULE_LINKER_FLAGS="-nostdlib -F${LLVM_SRCDIR}/ios_system.xcframework/ios-arm64 -O2 -framework ios_system -lobjc -lc -lc++ -miphoneos-version-min=14 " \
@@ -144,7 +145,18 @@ ar -r lib/libopt.a  tools/opt/CMakeFiles/opt.dir/AnalysisWrappers.cpp.o tools/op
 rm -rf frameworks.xcodeproj
 cp -r ../frameworks/frameworks.xcodeproj .
 # And then build the frameworks from these static libraries:
-xcodebuild -project frameworks.xcodeproj -alltargets -sdk iphoneos -configuration Release -quiet
+# Somehow, -alltargets does not build all targets. 
+xcodebuild -project frameworks.xcodeproj -target libLLVM -sdk iphoneos -configuration Release -quiet
+xcodebuild -project frameworks.xcodeproj -target ar -sdk iphoneos -configuration Release -quiet
+xcodebuild -project frameworks.xcodeproj -target clang -sdk iphoneos -configuration Release -quiet
+xcodebuild -project frameworks.xcodeproj -target opt -sdk iphoneos -configuration Release -quiet
+xcodebuild -project frameworks.xcodeproj -target nm -sdk iphoneos -configuration Release -quiet
+xcodebuild -project frameworks.xcodeproj -target dis -sdk iphoneos -configuration Release -quiet
+xcodebuild -project frameworks.xcodeproj -target link -sdk iphoneos -configuration Release -quiet
+xcodebuild -project frameworks.xcodeproj -target lld -sdk iphoneos -configuration Release -quiet
+xcodebuild -project frameworks.xcodeproj -target lli -sdk iphoneos -configuration Release -quiet
+xcodebuild -project frameworks.xcodeproj -target llc -sdk iphoneos -configuration Release -quiet
+# xcodebuild -project frameworks.xcodeproj -alltargets -sdk iphoneos -configuration Release -quiet
 popd
 
 # Now, build for the simulator:
@@ -160,7 +172,7 @@ cmake -G Ninja \
 -DLLVM_LINK_LLVM_DYLIB=ON \
 -DLLVM_TARGET_ARCH=X86 \
 -DLLVM_TARGETS_TO_BUILD="AArch64;X86;WebAssembly" \
--DLLVM_ENABLE_PROJECTS='clang;libcxx;libcxxabi;lld;compiler-rt;openmp' \
+-DLLVM_ENABLE_PROJECTS='clang;lld;compiler-rt;libcxx;libcxxabi;openmp' \
 -DLLVM_DEFAULT_TARGET_TRIPLE=x86_64-apple-darwin19.6.0 \
 -DCMAKE_BUILD_TYPE=Release \
 -DLLVM_ENABLE_THREADS=OFF \
@@ -172,6 +184,7 @@ cmake -G Ninja \
 -DCLANG_TABLEGEN=${OSX_BUILDDIR}/bin/clang-tblgen \
 -DCMAKE_OSX_SYSROOT=${SIM_SDKROOT} \
 -DCMAKE_C_COMPILER=${OSX_BUILDDIR}/bin/clang \
+-DCMAKE_CXX_COMPILER=${OSX_BUILDDIR}/bin/clang++ \
 -DCMAKE_LIBRARY_PATH=${OSX_BUILDDIR}/lib/ \
 -DCMAKE_INCLUDE_PATH=${OSX_BUILDDIR}/include/ \
 -DCOMPILER_RT_BUILD_BUILTINS=ON \
@@ -180,7 +193,7 @@ cmake -G Ninja \
 -DCOMPILER_RT_BUILD_PROFILE=OFF \
 -DCOMPILER_RT_BUILD_SANITIZERS=OFF \
 -DCOMPILER_RT_BUILD_XRAY=OFF \
--DLIBOMP_LDFLAGS="-L lib/clang/13.0.0/lib/darwin -lclang_rt.iossim" \
+-DLIBOMP_LDFLAGS="-L lib/clang/14.0.0/lib/darwin -lclang_rt.cc_kext_ios" \
 -DCMAKE_C_FLAGS="-target x86_64-apple-darwin19.6.0 -O2 -D_LIBCPP_STRING_H_HAS_CONST_OVERLOADS  -I${OSX_BUILDDIR}/include/ -I${OSX_BUILDDIR}/include/c++/v1/ -I${LLVM_SRCDIR} -mios-simulator-version-min=14.0  " \
 -DCMAKE_CXX_FLAGS="-target x86_64-apple-darwin19.6.0 -O2 -D_LIBCPP_STRING_H_HAS_CONST_OVERLOADS -I${OSX_BUILDDIR}/include/  -I${LLVM_SRCDIR} -mios-simulator-version-min=14.0 " \
 -DCMAKE_MODULE_LINKER_FLAGS="-nostdlib -F${LLVM_SRCDIR}/ios_system.xcframework/ios-arm64_x86_64-simulator -O2 -framework ios_system -lobjc -lc -lc++ -mios-simulator-version-min=14.0 " \
@@ -213,7 +226,17 @@ ar -r lib/libopt.a  tools/opt/CMakeFiles/opt.dir/AnalysisWrappers.cpp.o tools/op
 rm -rf frameworks.xcodeproj
 cp -r ../frameworks/frameworks.xcodeproj .
 # And then build the frameworks from these static libraries:
-xcodebuild -project frameworks.xcodeproj -alltargets -sdk iphonesimulator -arch x86_64 -configuration Release -quiet
+# Somehow, -alltargets does not build all targets. 
+xcodebuild -project frameworks.xcodeproj -target libLLVM -sdk iphonesimulator -arch x86_64 -configuration Release -quiet
+xcodebuild -project frameworks.xcodeproj -target ar -sdk iphonesimulator -arch x86_64 -configuration Release -quiet
+xcodebuild -project frameworks.xcodeproj -target clang -sdk iphonesimulator -arch x86_64 -configuration Release -quiet
+xcodebuild -project frameworks.xcodeproj -target opt -sdk iphonesimulator -arch x86_64 -configuration Release -quiet
+xcodebuild -project frameworks.xcodeproj -target nm -sdk iphonesimulator -arch x86_64 -configuration Release -quiet
+xcodebuild -project frameworks.xcodeproj -target dis -sdk iphonesimulator -arch x86_64 -configuration Release -quiet
+xcodebuild -project frameworks.xcodeproj -target link -sdk iphonesimulator -arch x86_64 -configuration Release -quiet
+xcodebuild -project frameworks.xcodeproj -target lld -sdk iphonesimulator -arch x86_64 -configuration Release -quiet
+xcodebuild -project frameworks.xcodeproj -target lli -sdk iphonesimulator -arch x86_64 -configuration Release -quiet
+xcodebuild -project frameworks.xcodeproj -target llc -sdk iphonesimulator -arch x86_64 -configuration Release -quiet
 popd
 
 # 6)
