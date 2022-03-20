@@ -9,6 +9,7 @@
 /* Begin PBXBuildFile section */
 		2207FAAD244B916A00C28F86 /* libLLVM.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 2237943E209B523500B15016 /* libLLVM.framework */; };
 		2207FAAF244B916A00C28F86 /* libc++.tbd in Frameworks */ = {isa = PBXBuildFile; fileRef = 22C505CC209A3CB500FDDFA9 /* libc++.tbd */; };
+		2219C40427E24DCA0043C84F /* lld.cpp.o in Frameworks */ = {isa = PBXBuildFile; fileRef = 228B143123A8201F00FE5B43 /* lld.cpp.o */; };
 		22379399209B047C00B15016 /* opt.h in Headers */ = {isa = PBXBuildFile; fileRef = 22379397209B047C00B15016 /* opt.h */; settings = {ATTRIBUTES = (Public, ); }; };
 		2237939E209B048C00B15016 /* libopt.a in Frameworks */ = {isa = PBXBuildFile; fileRef = 2237939D209B048C00B15016 /* libopt.a */; };
 		223793A0209B04D300B15016 /* libc++.tbd in Frameworks */ = {isa = PBXBuildFile; fileRef = 22C505CC209A3CB500FDDFA9 /* libc++.tbd */; };
@@ -579,6 +580,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				2219C40427E24DCA0043C84F /* lld.cpp.o in Frameworks */,
 				22BAC5D5259CAE0800B51FD6 /* liblldWasm.a in Frameworks */,
 				22BAC5D1259CAD8500B51FD6 /* liblldCOFF.a in Frameworks */,
 				228B13ED23A81EC700FE5B43 /* libLLVM.framework in Frameworks */,
