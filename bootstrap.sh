@@ -10,7 +10,7 @@ IOS_BUILDDIR=$(pwd)/build-iphoneos
 SIM_BUILDDIR=$(pwd)/build-iphonesimulator
 
 echo "Downloading ios_system Framework:"
-IOS_SYSTEM_VER="v2.7.0"
+IOS_SYSTEM_VER="v3.0.0"
 HHROOT="https://github.com/holzschu"
 
 echo "Downloading header file:"
@@ -54,7 +54,7 @@ fi
 pushd $OSX_BUILDDIR
 cmake -G Ninja \
 -DLLVM_TARGETS_TO_BUILD="AArch64;X86;WebAssembly" \
--DLLVM_ENABLE_PROJECTS='clang;compiler-rt;lld;libcxx;libcxxabi;flang;openmp' \
+-DLLVM_ENABLE_PROJECTS='clang;compiler-rt;lld;flang;openmp' \
 -DLLVM_LINK_LLVM_DYLIB=ON \
 -DCMAKE_BUILD_TYPE=Release \
 -DCMAKE_OSX_SYSROOT=${OSX_SDKROOT} \
@@ -91,7 +91,7 @@ cmake -G Ninja \
 -DLLVM_LINK_LLVM_DYLIB=ON \
 -DLLVM_TARGET_ARCH=AArch64 \
 -DLLVM_TARGETS_TO_BUILD="AArch64;X86;WebAssembly" \
--DLLVM_ENABLE_PROJECTS='clang;lld;compiler-rt;libcxx;libcxxabi;openmp' \
+-DLLVM_ENABLE_PROJECTS='clang;lld;compiler-rt;openmp' \
 -DLLVM_DEFAULT_TARGET_TRIPLE=arm64-apple-darwin \
 -DCMAKE_BUILD_TYPE=Release \
 -DLLVM_ENABLE_THREADS=OFF \
@@ -172,7 +172,7 @@ cmake -G Ninja \
 -DLLVM_LINK_LLVM_DYLIB=ON \
 -DLLVM_TARGET_ARCH=X86 \
 -DLLVM_TARGETS_TO_BUILD="AArch64;X86;WebAssembly" \
--DLLVM_ENABLE_PROJECTS='clang;lld;compiler-rt;libcxx;libcxxabi;openmp' \
+-DLLVM_ENABLE_PROJECTS='clang;lld;compiler-rt;openmp' \
 -DLLVM_DEFAULT_TARGET_TRIPLE=x86_64-apple-darwin19.6.0 \
 -DCMAKE_BUILD_TYPE=Release \
 -DLLVM_ENABLE_THREADS=OFF \
