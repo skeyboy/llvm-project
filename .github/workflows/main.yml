@@ -1,0 +1,85 @@
+name: Build LLVM XCFrameworks for Release
+# on: [push]
+on:
+  push:
+    # Sequence of patterns matched against refs/tags
+    tags:
+      - "v*" # Push events to matching v*, i.e. v1.0, v20.15.10
+
+jobs:
+  build-llvm:
+    runs-on: macos-latest
+    strategy:
+      matrix:
+        platformArch:
+          [
+            iphoneos,
+            iphonesimulator,
+            iphonesimulator-arm64,
+            maccatalyst,
+            maccatalyst-arm64,
+          ]
+    timeout-minutes: 1200
+    steps:
+      - uses: actions/checkout@v3
+      - uses: actions/download-artifact@v3
+      - name: Extract artifacts
+        run: find . -name "*.tar.xz" -exec tar xzf {} \;
+      - run: brew install ninja cmake
+      - name: Build LLVM for ${{ matrix.platformArch }}
+        run: source build-llvm.sh && build_llvm ${{ matrix.platformArch }}
+      - run: tar -cJf LLVM-${{ matrix.platformArch }}.tar.xz LLVM-${{ matrix.platformArch }}/
+      - uses: actions/upload-artifact@v3
+        with:
+          name: LLVM-${{ matrix.platformArch }}
+          path: LLVM-${{ matrix.platformArch }}.tar.xz
+
+  create-xcframework:
+    needs: build-llvm
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v3
+      - uses: actions/download-artifact@v3
+      - name: Extract artifacts
+        run: find . -name "*.tar.xz" -exec tar xzf {} \;
+
+      - name: Create XCFramework for Intel Macs
+        run: source build-llvm.sh && create_xcframework iphoneos iphonesimulator maccatalyst
+      #- run: tar -cJf LLVM_Intel.xcframework.tar.xz LLVM.xcframework
+      - run: tar -zcvf LLVM_Intel.xcframework.zip LLVM.xcframework
+      - uses: actions/upload-artifact@v3
+        with:
+          name: LLVM_Intel
+          path: LLVM_Intel.xcframework.zip
+
+      - uses: actions/upload-artifact@v3
+        with:
+          name: libclang
+          path: libclang.tar.xz
+
+      - name: Create XCFramework for M1 Macs
+        run: source build-llvm.sh && rm -rf LLVM.xcframework && create_xcframework iphoneos iphonesimulator-arm64 maccatalyst-arm64
+      # - run: tar -cJf LLVM_M1.xcframework.tar.xz LLVM.xcframework
+      - run: tar -zcvf LLVM_M1.xcframework.zip LLVM.xcframework
+
+      - uses: actions/upload-artifact@v3
+        with:
+          name: LLVM_M1
+          path: LLVM_M1.xcframework.zip
+
+      - name: Checksum for xcframework.zip
+        run: rm -rf checksum.txt && source checksum.sh
+      - uses: actions/upload-artifact@v3
+        with:
+          name: checksum
+          path: checksum.txt
+
+      - name: Release
+        uses: softprops/action-gh-release@v2
+        if: startsWith(github.ref, 'refs/tags/')
+        with:
+          files: |
+            LLVM_M1.xcframework.zip
+            LLVM_Intel.xcframework.zip
+            checksum.txt
+            libclang.tar.xz
