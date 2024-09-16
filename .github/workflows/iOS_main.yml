@@ -1,0 +1,88 @@
+name: iOS starter workflow
+
+on:
+  push:
+    branches: ["main"]
+  pull_request:
+    branches: ["main"]
+
+jobs:
+  build-llvm:
+    runs-on: macos-latest
+    steps:
+      - name: brew install
+        run: brew install ninja cmake
+
+      - name: Check out the repository to the runner
+        uses: actions/checkout@v4
+      - name: Run bootstrap
+        run: ./bootstrap.sh
+
+      # - name: Checksum clean
+      #   run: source clean_checksum.sh
+
+      - name: upload a.xcframework.zip
+        uses: actions/upload-artifact@v4
+        with:
+          name: a.xcframework.zip
+          path: a.xcframework.zip
+
+      - name: upload lld.xcframework.zip
+        uses: actions/upload-artifact@v4
+        with:
+          name: lld.xcframework.zip
+          path: lld.xcframework.zip
+
+      - name: upload llc.xcframework.zip
+        uses: actions/upload-artifact@v4
+        with:
+          name: llc.xcframework.zip
+          path: llc.xcframework.zip
+
+      - name: upload clang.xcframework.zip
+        uses: actions/upload-artifact@v4
+        with:
+          name: clang.xcframework.zip
+          path: clang.xcframework.zip
+
+      - name: upload dis.xcframework.zip
+        uses: actions/upload-artifact@v4
+        with:
+          name: dis.xcframework.zip
+          path: dis.xcframework.zip
+
+      - name: upload libLLVM.xcframework.zip
+        uses: actions/upload-artifact@v4
+        with:
+          name: libLLVM.xcframework.zip
+          path: libLLVM.xcframework.zip
+
+      - name: upload link.xcframework.zip
+        uses: actions/upload-artifact@v4
+        with:
+          name: link.xcframework.zip
+          path: link.xcframework.zip
+
+      - name: upload lli.xcframework.zip
+        uses: actions/upload-artifact@v4
+        with:
+          name: lli.xcframework.zip
+          path: lli.xcframework.zip
+
+      - name: upload nm.xcframework.zip
+        uses: actions/upload-artifact@v4
+        with:
+          name: nm.xcframework.zip
+          path: nm.xcframework.zip
+
+      - name: upload opt.xcframework.zip
+        uses: actions/upload-artifact@v4
+        with:
+          name: opt.xcframework.zip
+          path: opt.xcframework.zip
+
+      # - name: upload checksum.txt
+      #   uses: actions/upload-artifact@v4
+      #   with:
+      #     name: checksum.txt
+      #     path: checksum.txt
