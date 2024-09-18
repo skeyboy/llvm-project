@@ -1,0 +1,43 @@
+name: iOS starter workflow
+
+on:
+  push:
+    branches: ["office"]
+  pull_request:
+    branches: ["office"]
+
+jobs:
+  build-llvm:
+    runs-on: macos-latest
+    steps:
+      - name: brew install
+        run: brew install ninja cmake
+
+      - name: Check out the repository to the runner
+        uses: actions/checkout@v4
+      - name: Run bootstrap
+        run: source office_bootstrap.sh
+
+      - name: upload build_llvm.zip
+        uses: actions/upload-artifact@v4
+        with:
+          name: build_llvm.zip
+          path: build-llvm/build_llvm.zip
+
+      - name: upload build_llvm_ios.zip
+        uses: actions/upload-artifact@v4
+        with:
+          name: build_llvm_ios.zip
+          path: build-llvm/build_llvm_ios.zip
+
+      - name: upload build_llvm_mac.zip
+        uses: actions/upload-artifact@v4
+        with:
+          name: build_llvm_mac.zip
+          path: build-llvm/build_llvm_mac.zip
+
+      - name: upload build_clang.zip
+        uses: actions/upload-artifact@v4
+        with:
+          name: build_clang.zip
+          path: build-clang/build_clang.zip
