@@ -1,0 +1,25 @@
+name: macos starter workflow
+
+on:
+  push:
+    # Sequence of patterns matched against refs/tags
+    tags:
+      - "v-macos*" # Push events to matching v*, i.e. v1.0, v20.15.10
+
+jobs:
+  build-llvm:
+    runs-on: macos-latest
+    steps:
+      - name: brew install
+        run: brew install ninja cmake
+
+      - name: Check out the repository to the runner
+        uses: actions/checkout@v4
+      - name: Run bootstrap
+        run: ./bootstrap_macos.sh
+
+      - name: upload macos assets
+        uses: actions/upload-artifact@v3
+        with:
+          name: build_osx.zip
+          path: build_osx.zip
