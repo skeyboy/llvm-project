@@ -16,9 +16,10 @@ jobs:
       - name: Check out the repository to the runner
         uses: actions/checkout@v4
       - name: build macos
-        run: ./.github/actions/build_macos
+        run: ./bootstrap_macos.sh
 
   build-llvm-ios:
+    needs: build-llvm-macos # dependency
     runs-on: macos-latest
     steps:
       # - name: Check out the repository to the runner
